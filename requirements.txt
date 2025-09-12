@@ -1,0 +1,13 @@
+Pillow
+audiotsm
+scipy
+numpy
+pytube
+openai-whisper
+openai
+moviepy
+transformers
+sentence-transformers
+spacy
+sqlite3
+ffmpeg-python

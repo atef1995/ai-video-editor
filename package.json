@@ -1,0 +1,74 @@
+{
+  "name": "ai-video-editor",
+  "version": "1.0.0",
+  "description": "Automatically edits videos. Explanation here: https://www.youtube.com/watch?v=DQ8orIurGxw",
+  "main": "src/main/main.js",
+  "homepage": "./",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:renderer\" \"wait-on http://localhost:5173 && npm run dev:electron\"",
+    "dev:renderer": "vite",
+    "dev:electron": "electron .",
+    "build": "npm run build:renderer && npm run build:main",
+    "build:renderer": "vite build",
+    "build:main": "xcopy src\\main dist\\main /E /I /Y || cp -r src/main dist/",
+    "build:python": "node build-python.js",
+    "dist": "npm run build:python && npm run build && electron-builder",
+    "dist:quick": "npm run build && electron-builder",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.2",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^9.2.1",
+    "electron": "^38.1.0",
+    "electron-builder": "^26.0.12",
+    "vite": "^7.1.5",
+    "wait-on": "^8.0.5"
+  },
+  "dependencies": {
+    "@headlessui/react": "^2.2.8",
+    "@heroicons/react": "^2.2.0",
+    "@tailwindcss/vite": "^4.1.13",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "sqlite3": "^5.1.7",
+    "tailwindcss": "^4.1.13"
+  },
+  "build": {
+    "appId": "com.ai-video-editor.app",
+    "productName": "AI Video Editor",
+    "directories": {
+      "buildResources": "assets",
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*",
+      "python-dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "python-dist/",
+        "to": "python/",
+        "filter": ["**/*"]
+      }
+    ],
+    "mac": {
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.video"
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": "nsis"
+    },
+    "linux": {
+      "icon": "assets/icon.png",
+      "target": "AppImage"
+    }
+  }
+}
