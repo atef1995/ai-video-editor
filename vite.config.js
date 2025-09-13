@@ -2,8 +2,10 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
-module.exports = defineConfig({
-  plugins: [react()],
+export default defineConfig({
+  plugins: [
+    react(),
+  ],
   root: path.resolve(__dirname, 'src/renderer'),
   base: './',
   build: {
@@ -17,6 +19,14 @@ module.exports = defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src/renderer'),
+    },
+  },
+  css: {
+    postcss: {
+      plugins: [
+        require('tailwindcss'),
+        require('autoprefixer'),
+      ],
     },
   },
 });

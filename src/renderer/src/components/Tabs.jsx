@@ -3,27 +3,27 @@ import { Tab, TabGroup, TabList, TabPanels, TabPanel as HeadlessTabPanel } from 
 
 export const Tabs = ({ tabs, selectedIndex, onChange, children }) => {
   return (
-    <TabGroup selectedIndex={selectedIndex} onChange={onChange}>
-      <TabList className="flex space-x-1 rounded-xl bg-gray-800 p-1">
-        {tabs.map((tab, index) => (
-          <Tab
-            key={index}
-            className={({ selected }) =>
-              `w-full rounded-lg py-2.5 px-4 text-sm font-medium leading-5 text-white transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-opacity-50 ${
-                selected
-                  ? 'bg-primary-600 shadow'
-                  : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-              }`
-            }
-          >
-            <div className="flex items-center justify-center space-x-2">
-              {tab.icon && <tab.icon className="h-5 w-5" />}
+    <TabGroup selectedIndex={selectedIndex} onChange={onChange} className="h-full w-full my-4">
+      <div className="flex justify-center">
+        <TabList className="flex space-x-3 bg-gray-800 p-2 rounded-full border border-gray-700">
+          {tabs.map((tab, index) => (
+            <Tab
+              key={index}
+              className={({ selected }) =>
+                `flex items-center w-full h-full p-4 rounded-full text-sm font-medium transition-all duration-200 focus:outline-none ${
+                  selected
+                    ? 'bg-primary-600 text-white'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
+                }`
+              }
+            >
+              <tab.icon className="h-5 w-5" />
               <span>{tab.name}</span>
-            </div>
-          </Tab>
-        ))}
-      </TabList>
-      <TabPanels className="mt-6">
+            </Tab>
+          ))}
+        </TabList>
+      </div>
+      <TabPanels className="mt-12">
         {children}
       </TabPanels>
     </TabGroup>

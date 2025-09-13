@@ -26,6 +26,8 @@
     "concurrently": "^9.2.1",
     "electron": "^38.1.0",
     "electron-builder": "^26.0.12",
+    "postcss-loader": "^8.2.0",
+    "tailwindcss": "^3.4.17",
     "vite": "^7.1.5",
     "wait-on": "^8.0.5"
   },
@@ -35,8 +37,7 @@
     "@tailwindcss/vite": "^4.1.13",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "sqlite3": "^5.1.7",
-    "tailwindcss": "^4.1.13"
+    "sqlite3": "^5.1.7"
   },
   "build": {
     "appId": "com.ai-video-editor.app",
@@ -55,7 +56,9 @@
       {
         "from": "python-dist/",
         "to": "python/",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "mac": {

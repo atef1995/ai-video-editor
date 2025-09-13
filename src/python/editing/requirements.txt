@@ -1,0 +1,17 @@
+# Video Processing Requirements
+# Install with: pip install -r requirements.txt
+
+# Core video editing dependencies
+moviepy>=2.2.0
+numpy>=1.25.0
+pillow>=9.2.0
+
+# Audio/video processing
+ffmpeg-python>=0.2.0
+imageio>=2.5.0
+imageio-ffmpeg>=0.6.0
+
+# Utilities
+decorator>=4.0.2
+proglog<=1.0.0
+python-dotenv>=0.10

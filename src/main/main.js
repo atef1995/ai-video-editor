@@ -1,11 +1,23 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, protocol } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const isDev = !app.isPackaged; // More reliable way to detect development mode
 const { PythonBridge } = require('./ai-engine/python-bridge');
 const { JumpcutterBridge } = require('./ai-engine/jumpcutter-bridge');
+const { TranscriptionBridge } = require('./ai-engine/transcription-bridge');
 const { Database } = require('./database/database');
 
 let mainWindow;
+
+// Register protocol schemes before app is ready
+protocol.registerSchemesAsPrivileged([{
+  scheme: 'safe-video',
+  privileges: {
+    secure: true,
+    supportFetchAPI: true,
+    corsEnabled: true
+  }
+}]);
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -17,7 +29,8 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      webSecurity: false // Allow custom protocols during development
     },
     show: false,
     titleBarStyle: 'default'
@@ -42,6 +55,39 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  // Register secure video protocol
+  protocol.registerFileProtocol('safe-video', (request, callback) => {
+    console.log('Protocol handler called with request:', request.url);
+    const url = request.url.substring('safe-video://'.length);
+    const decodedPath = decodeURIComponent(url);
+    console.log('Decoded path:', decodedPath);
+
+    // Security: Only allow video files and verify path exists
+    const allowedExtensions = ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm'];
+    const extension = path.extname(decodedPath).toLowerCase();
+    console.log('File extension:', extension);
+
+    if (!allowedExtensions.includes(extension)) {
+      console.error('Blocked non-video file access:', decodedPath);
+      callback({ error: -6 }); // FILE_NOT_FOUND
+      return;
+    }
+
+    // Verify file exists and is readable
+    fs.access(decodedPath, fs.constants.R_OK, (err) => {
+      if (err) {
+        console.error('File access denied:', decodedPath, err);
+        callback({ error: -6 });
+        return;
+      }
+
+      // Security: Normalize path to prevent directory traversal
+      const normalizedPath = path.normalize(decodedPath);
+      console.log('Successfully serving file:', normalizedPath);
+      callback({ path: normalizedPath });
+    });
+  });
+
   // Initialize database
   await database.initialize();
   createWindow();
@@ -78,9 +124,80 @@ ipcMain.handle('get-app-path', () => {
   return app.getAppPath();
 });
 
-// Initialize Python bridge, jumpcutter bridge and database
+// Get video file as buffer for blob URL creation
+ipcMain.handle('get-video-buffer', async (event, videoPath) => {
+  try {
+    // Validate that it's a video file
+    const allowedExtensions = ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm'];
+    const extension = path.extname(videoPath).toLowerCase();
+
+    if (!allowedExtensions.includes(extension)) {
+      return { success: false, error: 'Invalid file type' };
+    }
+
+    // Check if file exists
+    if (!fs.existsSync(videoPath)) {
+      return { success: false, error: 'File not found' };
+    }
+
+    // Read file as buffer
+    const buffer = await fs.promises.readFile(videoPath);
+    const mimeType = getMimeType(extension);
+
+    return {
+      success: true,
+      buffer: Array.from(buffer), // Convert buffer to array for JSON serialization
+      mimeType
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Secure video URL generation (fallback)
+ipcMain.handle('get-video-preview-url', (event, videoPath) => {
+  try {
+    // Validate that it's a video file
+    const allowedExtensions = ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm'];
+    const extension = path.extname(videoPath).toLowerCase();
+
+    if (!allowedExtensions.includes(extension)) {
+      return { success: false, error: 'Invalid file type' };
+    }
+
+    // Check if file exists
+    if (!fs.existsSync(videoPath)) {
+      return { success: false, error: 'File not found' };
+    }
+
+    // Generate secure URL
+    const encodedPath = encodeURIComponent(videoPath);
+    const secureUrl = `safe-video://${encodedPath}`;
+
+    return { success: true, url: secureUrl };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Helper function to get MIME type
+function getMimeType(extension) {
+  const mimeTypes = {
+    '.mp4': 'video/mp4',
+    '.avi': 'video/x-msvideo',
+    '.mov': 'video/quicktime',
+    '.mkv': 'video/x-matroska',
+    '.wmv': 'video/x-ms-wmv',
+    '.flv': 'video/x-flv',
+    '.webm': 'video/webm'
+  };
+  return mimeTypes[extension] || 'video/mp4';
+}
+
+// Initialize Python bridge, jumpcutter bridge, transcription bridge and database
 const pythonBridge = new PythonBridge();
 const jumpcutterBridge = new JumpcutterBridge();
+const transcriptionBridge = new TranscriptionBridge();
 const database = new Database();
 
 // Video processing handlers
@@ -179,6 +296,56 @@ ipcMain.handle('get-quiet-parts-analysis', async (event, videoPath) => {
   }
 });
 
+// Transcription handlers
+ipcMain.handle('check-transcription-dependencies', async () => {
+  try {
+    return await transcriptionBridge.checkDependencies();
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('transcribe-video', async (event, videoPath, options = {}) => {
+  try {
+    const result = await transcriptionBridge.transcribeFile(videoPath, options);
+    return result;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('cancel-transcription', () => {
+  return transcriptionBridge.cancelTranscription();
+});
+
+ipcMain.handle('get-available-models', () => {
+  return { success: true, models: transcriptionBridge.getAvailableModels() };
+});
+
+// Forward transcription events to renderer
+transcriptionBridge.on('progress', (progressData) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('transcription-progress', progressData);
+  }
+});
+
+transcriptionBridge.on('complete', (result) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('transcription-complete', result);
+  }
+});
+
+transcriptionBridge.on('error', (error) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('transcription-error', error);
+  }
+});
+
+transcriptionBridge.on('cancelled', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('transcription-cancelled');
+  }
+});
 
 // Database handlers
 ipcMain.handle('create-project', async (event, projectData) => {
@@ -226,6 +393,28 @@ ipcMain.handle('get-clips', async (event, projectId) => {
     const clips = await database.getClips(projectId);
     return { success: true, clips };
   } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Open folder in file explorer
+ipcMain.handle('open-folder', async (event, folderPath) => {
+  try {
+    await shell.openPath(folderPath);
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to open folder:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Show file in folder (reveal in file explorer)
+ipcMain.handle('show-file-in-folder', async (event, filePath) => {
+  try {
+    shell.showItemInFolder(filePath);
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to show file in folder:', error);
     return { success: false, error: error.message };
   }
 });

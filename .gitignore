@@ -96,3 +96,9 @@ gen
 node_modules
 CLAUDE.md
 temp/params.txt
+src/python/cut-quiet-parts/TEMP
+temp/jumpcutter-output
+temp/transcriptions
+docs/JUMPCUTTER.md
+docs/PROGRESS_TRACKING.md
+docs/subtitle-preview-plan.md

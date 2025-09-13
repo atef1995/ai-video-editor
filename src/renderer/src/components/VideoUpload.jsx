@@ -43,20 +43,18 @@ export const VideoUpload = ({ onVideoSelect, disabled }) => {
   };
 
   return (
-    <div className="card">
-      <h2 className="text-xl font-semibold mb-4 flex items-center">
-        <svg className="w-5 h-5 mr-2 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-        </svg>
-        Upload Video
-      </h2>
+    <div className="bg-gray-800 rounded-2xl border border-gray-700 p-8">
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold text-white mb-2">Upload Video</h2>
+        <p className="text-gray-400 text-sm">Select a video file to get started</p>
+      </div>
       
       <div
         className={`
-          border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 cursor-pointer
+          border-2 border-dashed rounded-xl p-16 text-center transition-all duration-200 cursor-pointer
           ${isDragOver && !disabled 
-            ? 'border-primary-500 bg-primary-500/10' 
-            : 'border-gray-600 hover:border-gray-500'
+            ? 'border-primary-400 bg-primary-500/5' 
+            : 'border-gray-600 hover:border-gray-500 hover:bg-gray-700/20'
           }
           ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
         `}
@@ -65,22 +63,38 @@ export const VideoUpload = ({ onVideoSelect, disabled }) => {
         onDrop={handleDrop}
         onClick={!disabled ? handleFileSelect : undefined}
       >
-        <div className="flex flex-col items-center">
-          <svg className="w-12 h-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
-          
-          <h3 className="text-lg font-medium mb-2">
-            {disabled ? 'Processing...' : 'Drop video file here'}
-          </h3>
-          
-          <p className="text-gray-400 mb-4">
-            {disabled ? 'Please wait while processing' : 'or click to browse files'}
-          </p>
-          
-          <div className="text-sm text-gray-500">
-            Supported formats: MP4, AVI, MOV, MKV, WMV, FLV, WebM
+        <div className="flex flex-col items-center space-y-6">
+          <div className={`w-20 h-20 rounded-2xl flex items-center justify-center transition-colors ${
+            isDragOver && !disabled ? 'bg-primary-500' : 'bg-gray-700'
+          }`}>
+            {disabled ? (
+              <div className="w-8 h-8 border-3 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <svg className={`w-10 h-10 transition-colors ${isDragOver ? 'text-white' : 'text-gray-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            )}
           </div>
+          
+          <div>
+            <h3 className="text-2xl font-semibold mb-2 text-white">
+              {disabled ? 'Processing...' : isDragOver ? 'Drop to Upload' : 'Select Video File'}
+            </h3>
+            
+            <p className="text-gray-400 mb-8">
+              {disabled ? 'Please wait while processing' : 'Drag and drop or click to browse'}
+            </p>
+          </div>
+          
+          {!disabled && (
+            <div className="flex flex-wrap gap-2 max-w-md">
+              {['MP4', 'AVI', 'MOV', 'MKV', 'WMV'].map((format) => (
+                <span key={format} className="text-xs bg-gray-700 text-gray-300 px-3 py-1 rounded-full">
+                  {format}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

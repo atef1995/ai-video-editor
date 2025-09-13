@@ -93,16 +93,17 @@ AUDIO_FADE_ENVELOPE_SIZE = 400 # smooth out transitiion's audio by quickly fadin
     
 createPath(TEMP_FOLDER)
 
-command = "ffmpeg -i "+INPUT_FILE+" -qscale:v "+str(FRAME_QUALITY)+" "+TEMP_FOLDER+"/frame%06d.jpg -hide_banner"
+command = "ffmpeg -y -i \""+INPUT_FILE+"\" -qscale:v "+str(FRAME_QUALITY)+" "+TEMP_FOLDER+"/frame%06d.jpg -hide_banner"
 subprocess.call(command, shell=True)
 
-command = "ffmpeg -i "+INPUT_FILE+" -ab 160k -ac 2 -ar "+str(SAMPLE_RATE)+" -vn "+TEMP_FOLDER+"/audio.wav"
+command = "ffmpeg -y -i \""+INPUT_FILE+"\" -ab 160k -ac 2 -ar "+str(SAMPLE_RATE)+" -vn "+TEMP_FOLDER+"/audio.wav"
 
 subprocess.call(command, shell=True)
 
-command = "ffmpeg -i "+TEMP_FOLDER+"/input.mp4 2>&1"
+command = "ffmpeg -i \""+INPUT_FILE+"\" 2>&1"
 f = open(TEMP_FOLDER+"/params.txt", "w")
 subprocess.call(command, shell=True, stdout=f)
+f.close()
 
 
 
@@ -114,10 +115,21 @@ f = open(TEMP_FOLDER+"/params.txt", 'r+')
 pre_params = f.read()
 f.close()
 params = pre_params.split('\n')
+
+# Try to detect frame rate from ffmpeg output
+frameRateDetected = False
 for line in params:
-    m = re.search('Stream #.*Video.* ([0-9]*) fps',line)
+    m = re.search('Stream #.*Video.* ([0-9.]*) fps',line)  # Allow decimal fps
     if m is not None:
         frameRate = float(m.group(1))
+        frameRateDetected = True
+        print(f"Detected frame rate: {frameRate} fps")
+        break
+
+# If frame rate detection failed, use the command line argument
+if not frameRateDetected:
+    frameRate = args.frame_rate
+    print(f"Using fallback frame rate: {frameRate} fps")
 
 samplesPerFrame = sampleRate/frameRate
 
@@ -147,7 +159,7 @@ for i in range(audioFrameCount):
 chunks.append([chunks[-1][1],audioFrameCount,shouldIncludeFrame[i-1]])
 chunks = chunks[1:]
 
-outputAudioData = np.zeros((0,audioData.shape[1]))
+outputAudioData = np.zeros((0,audioData.shape[1]), dtype=np.float64)
 outputPointer = 0
 
 lastExistingFrame = None
@@ -156,7 +168,7 @@ for chunk in chunks:
     
     sFile = TEMP_FOLDER+"/tempStart.wav"
     eFile = TEMP_FOLDER+"/tempEnd.wav"
-    wavfile.write(sFile,SAMPLE_RATE,audioChunk)
+    wavfile.write(sFile,int(SAMPLE_RATE),audioChunk.astype(np.int16))
     with WavReader(sFile) as reader:
         with WavWriter(eFile, reader.channels, reader.samplerate) as writer:
             tsm = phasevocoder(reader.channels, speed=NEW_SPEED[int(chunk[2])])
@@ -164,7 +176,7 @@ for chunk in chunks:
     _, alteredAudioData = wavfile.read(eFile)
     leng = alteredAudioData.shape[0]
     endPointer = outputPointer+leng
-    outputAudioData = np.concatenate((outputAudioData,alteredAudioData/maxAudioVolume))
+    outputAudioData = np.concatenate((outputAudioData,alteredAudioData.astype(np.float64)/maxAudioVolume))
 
     #outputAudioData[outputPointer:endPointer] = alteredAudioData/maxAudioVolume
 
@@ -180,8 +192,19 @@ for chunk in chunks:
 
     startOutputFrame = int(math.ceil(outputPointer/samplesPerFrame))
     endOutputFrame = int(math.ceil(endPointer/samplesPerFrame))
+    
+    # Calculate the original chunk duration in frames
+    originalChunkFrames = chunk[1] - chunk[0]
+    outputChunkFrames = endOutputFrame - startOutputFrame
+    
     for outputFrame in range(startOutputFrame, endOutputFrame):
-        inputFrame = int(chunk[0]+NEW_SPEED[int(chunk[2])]*(outputFrame-startOutputFrame))
+        # Map output frame to input frame based on the actual audio processing result
+        if outputChunkFrames > 0:
+            progress = (outputFrame - startOutputFrame) / outputChunkFrames
+            inputFrame = int(chunk[0] + progress * originalChunkFrames)
+        else:
+            inputFrame = int(chunk[0])
+            
         didItWork = copyFrame(inputFrame,outputFrame)
         if didItWork:
             lastExistingFrame = inputFrame
@@ -190,7 +213,7 @@ for chunk in chunks:
 
     outputPointer = endPointer
 
-wavfile.write(TEMP_FOLDER+"/audioNew.wav",SAMPLE_RATE,outputAudioData)
+wavfile.write(TEMP_FOLDER+"/audioNew.wav",int(SAMPLE_RATE),(outputAudioData*maxAudioVolume).astype(np.int16))
 
 '''
 outputFrame = math.ceil(outputPointer/samplesPerFrame)
@@ -198,7 +221,7 @@ for endGap in range(outputFrame,audioFrameCount):
     copyFrame(int(audioSampleCount/samplesPerFrame)-1,endGap)
 '''
 
-command = "ffmpeg -framerate "+str(frameRate)+" -i "+TEMP_FOLDER+"/newFrame%06d.jpg -i "+TEMP_FOLDER+"/audioNew.wav -strict -2 "+OUTPUT_FILE
+command = "ffmpeg -y -framerate "+str(frameRate)+" -i "+TEMP_FOLDER+"/newFrame%06d.jpg -i "+TEMP_FOLDER+"/audioNew.wav -c:v libx264 -c:a aac -b:a 128k -pix_fmt yuv420p -shortest \""+OUTPUT_FILE+"\""
 subprocess.call(command, shell=True)
 
 deletePath(TEMP_FOLDER)
