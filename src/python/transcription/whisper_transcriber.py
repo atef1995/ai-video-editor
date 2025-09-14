@@ -161,7 +161,7 @@ def main():
     transcriber = WhisperTranscriber(args.model)
 
     # Always create the JSON transcription file
-    result = transcriber.transcribe_to_srt_file(
+    result = transcriber.transcribe_to_file(
         args.input_path,
         args.output_path,
         args.language

@@ -56,8 +56,8 @@ class OverlaySubtitles:
             subtitle_filename = Path(subtitle_file).name
 
             if subtitle_file.endswith('.ass'):
-                # For ASS files, use ass filter
-                vf_filter = f"ass={subtitle_filename}"
+                # For ASS files, use ass filter with absolute path
+                vf_filter = f"ass={subtitle_file}"
             else:
                 # For SRT files, use subtitles filter with styling
                 # Apply basic styling that works reliably
@@ -94,7 +94,11 @@ class OverlaySubtitles:
             ]
 
             # Set working directory to subtitle file location for relative path handling
-            working_dir = str(Path(subtitle_file).parent)
+            # For ASS files, use current directory since we use absolute paths
+            if subtitle_file.endswith('.ass'):
+                working_dir = os.getcwd()
+            else:
+                working_dir = str(Path(subtitle_file).parent)
 
             print(
                 f"[INFO] FFmpeg command: ffmpeg -i [video] -vf {vf_filter} -c:a copy -y [output]")
@@ -166,15 +170,24 @@ class OverlaySubtitles:
 
 def create_subtitle_file(transcription_data, output_path, subtitle_positions=None, video_path=None):
     """Create subtitle file from transcription data"""
-    # For now, always use SRT format as it's more reliable
-    # ASS positioning can be added later when needed
+    # Use ASS format for custom positioning, SRT for standard placement
 
-    # Change extension to .srt if it was .ass
-    if output_path.endswith('.ass'):
-        output_path = output_path.replace('.ass', '.srt')
+    if subtitle_positions and any(pos.get('position') for pos in subtitle_positions):
+        # Custom positioning data available - use ASS format
+        if not output_path.endswith('.ass'):
+            output_path = output_path.replace('.srt', '.ass')
 
-    # Create SRT file (more reliable than ASS)
-    create_srt_file(transcription_data, output_path)
+        print(f"[DEBUG] Using ASS format for custom positioning")
+        create_ass_file(transcription_data, output_path,
+                        subtitle_positions, video_path)
+    else:
+        # No custom positioning - use SRT format (more reliable)
+        if output_path.endswith('.ass'):
+            output_path = output_path.replace('.ass', '.srt')
+
+        print(f"[DEBUG] Using SRT format for standard positioning")
+        create_srt_file(transcription_data, output_path)
+
     return output_path
 
 
@@ -213,12 +226,17 @@ def create_srt_file(transcription_data, srt_path):
 
 def create_ass_file(transcription_data, ass_path, subtitle_positions, video_path=None):
     """Create ASS subtitle file with positioning data"""
-    # Get video info for positioning calculations
-    video_info = get_video_info(video_path) if video_path else {
-        'width': 1920, 'height': 1080}
+    print(f"[DEBUG] Creating ASS file: {ass_path}")
+    print(f"[DEBUG] Subtitle positions data: {subtitle_positions}")
 
-    # ASS file header with proper video resolution
-    ass_content = f"""[Script Info]
+    try:
+        # Get video info for positioning calculations
+        video_info = get_video_info(video_path) if video_path else {
+            'width': 1920, 'height': 1080}
+        print(f"[DEBUG] Video info for ASS: {video_info}")
+
+        # ASS file header with proper video resolution
+        ass_content = f"""[Script Info]
 Title: Generated Subtitles
 ScriptType: v4.00+
 PlayResX: {video_info['width']}
@@ -232,33 +250,58 @@ Style: Default,Arial,48,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
-    for i, segment in enumerate(transcription_data.get('segments', [])):
-        start_time = format_ass_time(segment['start'])
-        end_time = format_ass_time(segment['end'])
-        text = segment['text'].strip()
+        segments = transcription_data.get('segments', [])
+        print(f"[DEBUG] Processing {len(segments)} segments for ASS")
 
-        # Find matching position data
-        position = find_position_for_segment(segment, subtitle_positions, i)
-        if position:
-            # Apply positioning - convert percentage to pixels if needed
-            # Handle both percentage (0-100) and pixel formats
-            if position.get('position'):
-                # Frontend format: { position: { x: 10, y: 80 } } (percentages)
-                pos_data = position['position']
-                x = int((pos_data.get('x', 50) / 100) * video_info['width'])
-                y = int((pos_data.get('y', 80) / 100) * video_info['height'])
-            else:
-                # Direct format: { x: 320, y: 240 } (pixels)
-                x = position.get('x', video_info['width'] // 2)
-                y = position.get('y', int(video_info['height'] * 0.8))
+        for i, segment in enumerate(segments):
+            start_time = format_ass_time(segment['start'])
+            end_time = format_ass_time(segment['end'])
+            text = segment['text'].strip()
 
-            pos_tag = f"{{\\pos({x},{y})}}"
-            text = pos_tag + text
+            if not text:
+                print(f"[DEBUG] Skipping empty segment {i}")
+                continue
 
-        ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{text}\n"
+            # Find matching position data
+            position = find_position_for_segment(
+                segment, subtitle_positions, i)
+            print(f"[DEBUG] Segment {i}: position = {position}")
 
-    with open(ass_path, 'w', encoding='utf-8') as f:
-        f.write(ass_content)
+            if position:
+                # Apply positioning - convert percentage to pixels if needed
+                # Handle both percentage (0-100) and pixel formats
+                if position.get('position'):
+                    # Frontend format: { position: { x: 10, y: 80 } } (percentages)
+                    pos_data = position['position']
+                    x = int((pos_data.get('x', 50) / 100)
+                            * video_info['width'])
+                    y = int((pos_data.get('y', 80) / 100)
+                            * video_info['height'])
+                    print(
+                        f"[DEBUG] Using percentage positioning: {pos_data} -> ({x}, {y})")
+                else:
+                    # Direct format: { x: 320, y: 240 } (pixels)
+                    x = position.get('x', video_info['width'] // 2)
+                    y = position.get('y', int(video_info['height'] * 0.8))
+                    print(f"[DEBUG] Using pixel positioning: ({x}, {y})")
+
+                pos_tag = f"{{\\pos({x},{y})}}"
+                text = pos_tag + text
+                print(f"[DEBUG] Applied positioning tag: {pos_tag}")
+
+            ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{text}\n"
+
+        print(f"[DEBUG] Writing ASS file to: {ass_path}")
+        with open(ass_path, 'w', encoding='utf-8') as f:
+            f.write(ass_content)
+
+        print(f"[DEBUG] ASS file created successfully")
+
+    except Exception as e:
+        print(f"[DEBUG] Error creating ASS file: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 def find_position_for_segment(segment, subtitle_positions, segment_index):
@@ -381,21 +424,24 @@ def main():
         print(
             f"[INFO] Video info: {video_info['width']}x{video_info['height']} (AR: {video_info['aspectRatio']:.2f})")
 
-        # Create temporary subtitle file (always use SRT for reliability)
+        # Create temporary subtitle file (SRT or ASS based on positioning)
         video_name = Path(args.video_path).stem
-        subtitle_path = f"{video_name}_temp.srt"
+        subtitle_path_template = f"{video_name}_temp.srt"
 
-        print(f"[DEBUG] Creating subtitle file: {subtitle_path}")
+        print(f"[DEBUG] Creating subtitle file: {subtitle_path_template}")
         print(
             f"[DEBUG] Transcription segments: {len(transcription_data.get('segments', []))}")
         print(f"[DEBUG] Subtitle positions: {len(subtitle_positions)}")
 
-        create_subtitle_file(transcription_data, subtitle_path,
-                             subtitle_positions, args.video_path)
+        # create_subtitle_file returns the actual path (might be .ass instead of .srt)
+        actual_subtitle_path = create_subtitle_file(transcription_data, subtitle_path_template,
+                                                    subtitle_positions, args.video_path)
+
+        print(f"[DEBUG] Actual subtitle file created: {actual_subtitle_path}")
 
         # Verify subtitle file was created and show content preview
-        if Path(subtitle_path).exists():
-            with open(subtitle_path, 'r', encoding='utf-8') as f:
+        if Path(actual_subtitle_path).exists():
+            with open(actual_subtitle_path, 'r', encoding='utf-8') as f:
                 content = f.read()
                 print(
                     f"[DEBUG] Subtitle file created, size: {len(content)} characters")
@@ -407,7 +453,7 @@ def main():
         # Create overlay
         overlay = OverlaySubtitles(
             video_path=args.video_path,
-            subtitle_file_path=subtitle_path,
+            subtitle_file_path=actual_subtitle_path,
             style=text_style,
             video_info=video_info
         )
@@ -416,7 +462,7 @@ def main():
 
         # Clean up temporary subtitle file
         try:
-            os.remove(subtitle_path)
+            os.remove(actual_subtitle_path)
         except:
             pass
 
