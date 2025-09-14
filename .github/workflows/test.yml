@@ -1,0 +1,57 @@
+name: Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y ffmpeg
+
+    - name: Install Node.js dependencies
+      run: npm ci
+
+    - name: Install Python dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install -r src/python/cut-quiet-parts/requirements.txt
+
+    - name: Lint code
+      run: |
+        # Add linting commands when available
+        echo "Linting step - add ESLint/Prettier checks here"
+
+    - name: Check Python syntax
+      run: |
+        python -m py_compile src/python/ai_pipeline.py
+        python -m py_compile src/python/cut-quiet-parts/jumpcutter.py
+
+    - name: Build test
+      run: npm run build
+
+    - name: Run tests (if available)
+      run: npm test
+      continue-on-error: true

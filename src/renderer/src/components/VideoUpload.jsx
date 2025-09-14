@@ -7,6 +7,7 @@ export const VideoUpload = ({ onVideoSelect, disabled, hasVideo = false }) => {
     try {
       const filePath = await window.electronAPI.selectVideoFile();
       if (filePath) {
+        console.log("filepath VideoUpload:" + filePath);
         onVideoSelect(filePath);
       }
     } catch (error) {

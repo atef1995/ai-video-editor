@@ -5,6 +5,8 @@ import { ProcessingStatus } from "./ProcessingStatus";
 import { GeneratedClips } from "./GeneratedClips";
 
 const AiShortsGenerator = ({ selectedVideo, handleVideoSelect, hasVideo }) => {
+  console.log({ selectedVideo, handleVideoSelect, hasVideo });
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [generatedClips, setGeneratedClips] = useState([]);
@@ -66,6 +68,14 @@ const AiShortsGenerator = ({ selectedVideo, handleVideoSelect, hasVideo }) => {
   };
 
   const handleProcessStart = async (videoPath) => {
+
+    if (!videoPath || typeof videoPath !== 'string') {
+      setProcessingError(
+        "Invalid video file path. Please select a video file first."
+      );
+      return;
+    }
+
     if (!openaiKey) {
       setProcessingError(
         "OpenAI API key is required. Please add it in Settings."
@@ -90,7 +100,9 @@ const AiShortsGenerator = ({ selectedVideo, handleVideoSelect, hasVideo }) => {
       const removeProgressListener = window.electronAPI.onProgress(
         (event, progressData) => {
           const now = Date.now();
-          const currentStepDuration = stepStartTimeRef.current ? now - stepStartTimeRef.current : 0;
+          const currentStepDuration = stepStartTimeRef.current
+            ? now - stepStartTimeRef.current
+            : 0;
 
           setProcessingProgress(progressData.progress);
           setProcessingStep(progressData.step);
@@ -104,13 +116,13 @@ const AiShortsGenerator = ({ selectedVideo, handleVideoSelect, hasVideo }) => {
           }
 
           // Update detailed steps tracking
-          setDetailedSteps(prev => {
+          setDetailedSteps((prev) => {
             const newStep = {
               step: progressData.step,
               progress: progressData.progress,
               timestamp: now,
               duration: progressData.stepDuration || currentStepDuration,
-              details: progressData.details || ""
+              details: progressData.details || "",
             };
 
             // If it's a new step, add it; otherwise update the last one
@@ -145,6 +157,7 @@ const AiShortsGenerator = ({ selectedVideo, handleVideoSelect, hasVideo }) => {
         }
       );
 
+
       // Start the AI processing pipeline
       const result = await window.electronAPI.processVideo(videoPath, {
         openaiKey: openaiKey,
@@ -158,6 +171,8 @@ const AiShortsGenerator = ({ selectedVideo, handleVideoSelect, hasVideo }) => {
         removeCompleteListener();
       }, 1000);
     } catch (error) {
+      console.error(error);
+
       setProcessingError(`Failed to start processing: ${error.message}`);
       setIsProcessing(false);
     }
@@ -171,7 +186,6 @@ const AiShortsGenerator = ({ selectedVideo, handleVideoSelect, hasVideo }) => {
   };
   return (
     <div className="space-y-12">
-
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 2xl:grid-cols-12 gap-12">
         {/* Left Side - Upload and Preview */}
@@ -253,7 +267,6 @@ const AiShortsGenerator = ({ selectedVideo, handleVideoSelect, hasVideo }) => {
               </div>
             </div>
           )}
-
         </div>
       </div>
     </div>

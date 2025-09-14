@@ -8,6 +8,7 @@ import {
   SpeakerXMarkIcon,
   MicrophoneIcon,
   CogIcon,
+  BugAntIcon,
 } from "@heroicons/react/24/outline";
 import AiShortsGenerator from "./components/AiShortsGenerator";
 import Settings from "./components/Settings";
@@ -16,6 +17,33 @@ function AppContent() {
   const { selectedVideo, handleVideoSelect, hasVideo } = useVideo();
 
   const [activeTab, setActiveTab] = useState(0);
+
+  const handleOpenLogFile = async () => {
+    try {
+      const result = await window.electronAPI.openLogFile();
+      if (!result.success) {
+        console.error("Failed to open log file:", result.error);
+        alert("Failed to open log file: " + result.error);
+      }
+    } catch (error) {
+      console.error("Error opening log file:", error);
+      alert("Error opening log file: " + error.message);
+    }
+  };
+
+  const handleGetLogPath = async () => {
+    try {
+      const result = await window.electronAPI.getLogFilePath();
+      if (result.success) {
+        alert("Log file location: " + result.path);
+      } else {
+        alert("Failed to get log file path");
+      }
+    } catch (error) {
+      console.error("Error getting log path:", error);
+      alert("Error getting log path: " + error.message);
+    }
+  };
 
   const tabs = [
     {
@@ -67,9 +95,28 @@ function AppContent() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-              <span className="text-sm text-gray-400">Ready</span>
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleOpenLogFile}
+                  className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 rounded transition-colors"
+                  title="Open Log File"
+                >
+                  <BugAntIcon className="w-3 h-3" />
+                  <span>Debug</span>
+                </button>
+                <button
+                  onClick={handleGetLogPath}
+                  className="text-xs text-gray-400 hover:text-white transition-colors"
+                  title="Show Log Path"
+                >
+                  📁
+                </button>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                <span className="text-sm text-gray-400">Ready</span>
+              </div>
             </div>
           </div>
         </div>

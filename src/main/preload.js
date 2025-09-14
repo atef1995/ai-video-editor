@@ -97,5 +97,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   isEncryptionAvailable: () => ipcRenderer.invoke('is-encryption-available'),
 
   // External links
-  openExternal: (url) => ipcRenderer.invoke('open-external', url)
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+  // Debug helpers
+  getLogFilePath: () => ipcRenderer.invoke('get-log-file-path'),
+  openLogFile: () => ipcRenderer.invoke('open-log-file')
 });

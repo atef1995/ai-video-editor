@@ -1,126 +1,196 @@
-const { spawn } = require('child_process');
-const path = require('path');
-const fs = require('fs').promises;
-const EventEmitter = require('events');
-const { app } = require('electron');
+const { spawn } = require("child_process");
+const path = require("path");
+const fs = require("fs").promises;
+const EventEmitter = require("events");
+const { app } = require("electron");
 
 class PythonBridge extends EventEmitter {
   constructor() {
     super();
-    this.tempDir = path.join(__dirname, '../../../temp');
+    // Use user data directory for temp files in production, project temp in dev
+    const isDev = !app.isPackaged;
+    if (isDev) {
+      this.tempDir = path.join(__dirname, "../../../temp");
+    } else {
+      this.tempDir = path.join(app.getPath("userData"), "temp");
+    }
     this.currentProcess = null;
     this.processingStartTime = null;
     this.stepStartTime = null;
     this.stepTimes = new Map();
 
     // Determine if we're in development or production
-    const isDev = !app.isPackaged;
-    
     if (isDev) {
       // Development: use Python interpreter and source files
-      this.pythonPath = 'python';
-      this.scriptPath = path.join(__dirname, '../../python/ai_pipeline.py');
+      this.pythonPath = "python";
+      this.scriptPath = path.join(__dirname, "../../python/ai_pipeline.py");
       this.useBundled = false;
     } else {
-      // Production: use bundled executable
+      // Production: try bundled executable, fallback to Python if not found
       this.bundledExecutablePath = this.getBundledExecutablePath();
-      this.useBundled = true;
+      this.pythonPath = "python";
+      this.scriptPath = this.getBundledScriptPath();
+      this.useBundled = this.checkBundledExecutable();
+
+      console.log(
+        `Bundled executable check: ${this.bundledExecutablePath} exists: ${this.useBundled}`,
+      );
+      if (!this.useBundled) {
+        console.log(
+          `Falling back to Python interpreter with script: ${this.scriptPath}`,
+        );
+      }
     }
   }
-  
+
   getBundledExecutablePath() {
     // In production, bundled executables are in resources/python/
-    const resourcesPath = process.resourcesPath || path.join(process.cwd(), 'resources');
-    const pythonDir = path.join(resourcesPath, 'python');
-    
+    const resourcesPath =
+      process.resourcesPath || path.join(process.cwd(), "resources");
+    const pythonDir = path.join(resourcesPath, "python");
+
     // Platform-specific executable names
-    const isWindows = process.platform === 'win32';
-    const executableName = isWindows ? 'ai_pipeline.exe' : 'ai_pipeline';
-    
-    return path.join(pythonDir, 'ai_pipeline', executableName);
+    const isWindows = process.platform === "win32";
+    const executableName = isWindows ? "ai_pipeline.exe" : "ai_pipeline";
+
+    return path.join(pythonDir, "ai_pipeline", executableName);
+  }
+
+  getBundledScriptPath() {
+    // In production, Python scripts are bundled as extraResources at resources/src/python/
+    const resourcesPath =
+      process.resourcesPath || path.join(process.cwd(), "resources");
+    return path.join(resourcesPath, "src", "python", "ai_pipeline.py");
+  }
+
+  checkBundledExecutable() {
+    try {
+      const fs = require("fs");
+      const exists = fs.existsSync(this.bundledExecutablePath);
+      console.log(
+        `Bundled executable check: ${this.bundledExecutablePath} exists: ${exists}`,
+      );
+      return exists;
+    } catch (error) {
+      console.error("Error checking bundled executable:", error);
+      return false;
+    }
   }
 
   async ensureTempDir() {
     try {
       await fs.mkdir(this.tempDir, { recursive: true });
+      console.log(`Temp directory ensured: ${this.tempDir}`);
     } catch (error) {
-      console.error('Failed to create temp directory:', error);
+      console.error("Failed to create temp directory:", error);
+      throw error;
     }
   }
 
   async checkPythonDependencies() {
     return new Promise((resolve) => {
-      const checkProcess = spawn(this.pythonPath, ['-c', 'import whisper, openai, moviepy; print("Dependencies OK")']);
-      
-      let output = '';
-      let errorOutput = '';
+      const checkProcess = spawn(this.pythonPath, [
+        "-c",
+        'import whisper, openai, moviepy; print("Dependencies OK")',
+      ]);
 
-      checkProcess.stdout.on('data', (data) => {
+      let output = "";
+      let errorOutput = "";
+
+      checkProcess.stdout.on("data", (data) => {
         output += data.toString();
       });
 
-      checkProcess.stderr.on('data', (data) => {
+      checkProcess.stderr.on("data", (data) => {
         errorOutput += data.toString();
       });
 
-      checkProcess.on('close', (code) => {
-        if (code === 0 && output.includes('Dependencies OK')) {
+      checkProcess.on("close", (code) => {
+        if (code === 0 && output.includes("Dependencies OK")) {
           resolve({ success: true });
         } else {
-          resolve({ 
-            success: false, 
-            error: `Python dependencies missing. Error: ${errorOutput}` 
+          resolve({
+            success: false,
+            error: `Python dependencies missing. Error: ${errorOutput}`,
           });
         }
       });
 
-      checkProcess.on('error', (error) => {
-        resolve({ 
-          success: false, 
-          error: `Python not found or not executable: ${error.message}` 
+      checkProcess.on("error", (error) => {
+        resolve({
+          success: false,
+          error: `Python not found or not executable: ${error.message}`,
         });
       });
     });
   }
 
   async processVideo(videoPath, options = {}) {
+    if (!videoPath || typeof videoPath !== "string") {
+      throw new Error(
+        `Invalid videoPath: expected string, got ${typeof videoPath}: ${videoPath}`,
+      );
+    }
+
     await this.ensureTempDir();
 
     const {
-      outputDir = path.join(this.tempDir, 'output'),
+      outputDir = path.join(this.tempDir, "output"),
       openaiKey = null,
-      maxClips = 5
+      maxClips = 5,
     } = options;
 
     return new Promise((resolve, reject) => {
-      const args = [
-        this.scriptPath,
-        videoPath,
-        '--output-dir', outputDir,
-        '--max-clips', maxClips.toString(),
-        '--temp-dir', this.tempDir
-      ];
+      let command, args;
 
-      if (openaiKey) {
-        args.push('--openai-key', openaiKey);
+      if (this.useBundled) {
+        // Production: use bundled executable
+        command = this.bundledExecutablePath;
+        args = [
+          videoPath,
+          "--output-dir",
+          outputDir,
+          "--max-clips",
+          maxClips.toString(),
+          "--temp-dir",
+          this.tempDir,
+        ];
+      } else {
+        // Development: use Python interpreter
+        command = this.pythonPath;
+        args = [
+          this.scriptPath,
+          videoPath,
+          "--output-dir",
+          outputDir,
+          "--max-clips",
+          maxClips.toString(),
+          "--temp-dir",
+          this.tempDir,
+        ];
       }
 
-      console.log('Starting Python AI pipeline:', args);
+      if (openaiKey) {
+        args.push("--openai-key", openaiKey);
+      }
+
+      console.log(`Starting Python AI pipeline with command: ${command}`);
+      console.log(`Args: ${JSON.stringify(args, null, 2)}`);
 
       // Track processing start time
       this.processingStartTime = Date.now();
       this.stepStartTime = Date.now();
       this.stepTimes.clear();
 
-      this.currentProcess = spawn(this.pythonPath, args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env }
+      this.currentProcess = spawn(command, args, {
+        stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env },
       });
 
-      let stdout = '';
-      let stderr = '';
+      let stdout = "";
+      let stderr = "";
 
-      this.currentProcess.stdout.on('data', (data) => {
+      this.currentProcess.stdout.on("data", (data) => {
         const output = data.toString();
         stdout += output;
 
@@ -145,17 +215,19 @@ class PythonBridge extends EventEmitter {
 
           // Parse additional details from output
           const detailsMatch = output.match(/Details: (.+)/);
-          const details = detailsMatch ? detailsMatch[1].trim() : '';
+          const details = detailsMatch ? detailsMatch[1].trim() : "";
 
           // Calculate total elapsed time
-          const totalElapsed = this.processingStartTime ? now - this.processingStartTime : 0;
+          const totalElapsed = this.processingStartTime
+            ? now - this.processingStartTime
+            : 0;
 
-          this.emit('progress', {
+          this.emit("progress", {
             progress,
             step,
             stepDuration,
             totalElapsed,
-            details
+            details,
           });
         }
 
@@ -165,30 +237,30 @@ class PythonBridge extends EventEmitter {
           const completedStep = stepCompleteMatch[1];
           const duration = stepCompleteMatch[2];
 
-          this.emit('progress', {
+          this.emit("progress", {
             progress: null, // Don't update progress bar
             step: `✓ ${completedStep}`,
             stepDuration: duration,
-            details: `Completed in ${duration}`
+            details: `Completed in ${duration}`,
           });
         }
 
         // Emit raw output for debugging
-        this.emit('stdout', output);
+        this.emit("stdout", output);
       });
 
-      this.currentProcess.stderr.on('data', (data) => {
+      this.currentProcess.stderr.on("data", (data) => {
         const error = data.toString();
         stderr += error;
-        this.emit('stderr', error);
-        
+        this.emit("stderr", error);
+
         // Check for specific error types
-        if (error.includes('ModuleNotFoundError')) {
-          this.emit('error', { type: 'missing_dependency', message: error });
+        if (error.includes("ModuleNotFoundError")) {
+          this.emit("error", { type: "missing_dependency", message: error });
         }
       });
 
-      this.currentProcess.on('close', async (code) => {
+      this.currentProcess.on("close", async (code) => {
         this.currentProcess = null;
 
         console.log(`Python process closed with code: ${code}`);
@@ -199,10 +271,13 @@ class PythonBridge extends EventEmitter {
           try {
             // Try to read results file
             const videoName = path.basename(videoPath, path.extname(videoPath));
-            const resultsPath = path.join(outputDir, `${videoName}_results.json`);
+            const resultsPath = path.join(
+              outputDir,
+              `${videoName}_results.json`,
+            );
 
             console.log(`Looking for results file at: ${resultsPath}`);
-            const resultsData = await fs.readFile(resultsPath, 'utf-8');
+            const resultsData = await fs.readFile(resultsPath, "utf-8");
             const results = JSON.parse(resultsData);
 
             resolve(results);
@@ -212,7 +287,7 @@ class PythonBridge extends EventEmitter {
               success: false,
               error: `Failed to read results: ${error.message}`,
               stdout,
-              stderr
+              stderr,
             });
           }
         } else {
@@ -220,18 +295,37 @@ class PythonBridge extends EventEmitter {
             success: false,
             error: `Python process exited with code ${code}`,
             stdout,
-            stderr
+            stderr,
           });
         }
       });
 
-      this.currentProcess.on('error', (error) => {
+      this.currentProcess.on("error", (error) => {
         this.currentProcess = null;
+
+        let errorMessage = `Failed to start Python process: ${error.message}`;
+
+        if (this.useBundled && error.code === "ENOENT") {
+          errorMessage +=
+            "\n\nThe bundled executable was not found. This might be because:";
+          errorMessage +=
+            "\n1. The Python scripts were not bundled with the application";
+          errorMessage += "\n2. You need to install Python on your system";
+          errorMessage += "\n3. Python is not in your system PATH";
+          errorMessage +=
+            "\n\nPlease install Python 3.8+ and required dependencies (whisper, openai, moviepy)";
+        } else if (error.code === "ENOENT") {
+          errorMessage +=
+            "\n\nPython was not found. Please install Python 3.8+ and required dependencies.";
+        }
+
         reject({
           success: false,
-          error: `Failed to start Python process: ${error.message}`,
+          error: errorMessage,
           stdout,
-          stderr
+          stderr,
+          usedBundled: this.useBundled,
+          bundledPath: this.bundledExecutablePath,
         });
       });
     });
@@ -239,7 +333,7 @@ class PythonBridge extends EventEmitter {
 
   cancelProcessing() {
     if (this.currentProcess) {
-      this.currentProcess.kill('SIGTERM');
+      this.currentProcess.kill("SIGTERM");
       this.currentProcess = null;
 
       // Reset timing information
@@ -247,80 +341,95 @@ class PythonBridge extends EventEmitter {
       this.stepStartTime = null;
       this.stepTimes.clear();
 
-      this.emit('cancelled');
+      this.emit("cancelled");
       return true;
     }
     return false;
   }
 
   async getVideoInfo(videoPath) {
-    const scriptPath = path.join(__dirname, '../../python/editing/video_processor.py');
-    
+    const isDev = !app.isPackaged;
+    const scriptPath = isDev
+      ? path.join(__dirname, "../../python/editing/video_processor.py")
+      : path.join(
+          process.resourcesPath,
+          "src",
+          "python",
+          "editing",
+          "video_processor.py",
+        );
+
     return new Promise((resolve, reject) => {
       const process = spawn(this.pythonPath, [
         scriptPath,
         videoPath,
-        '--command', 'info'
+        "--command",
+        "info",
       ]);
 
-      let stdout = '';
-      let stderr = '';
+      let stdout = "";
+      let stderr = "";
 
-      process.stdout.on('data', (data) => {
+      process.stdout.on("data", (data) => {
         stdout += data.toString();
       });
 
-      process.stderr.on('data', (data) => {
+      process.stderr.on("data", (data) => {
         stderr += data.toString();
       });
 
-      process.on('close', (code) => {
+      process.on("close", (code) => {
         if (code === 0) {
           try {
             const info = JSON.parse(stdout);
             resolve(info);
           } catch (error) {
-            reject({ error: 'Failed to parse video info', stderr });
+            reject({ error: "Failed to parse video info", stderr });
           }
         } else {
           reject({ error: `Process exited with code ${code}`, stderr });
         }
       });
 
-      process.on('error', (error) => {
+      process.on("error", (error) => {
         reject({ error: `Failed to get video info: ${error.message}` });
       });
     });
   }
 
   async extractAudio(videoPath, outputPath = null) {
-    const scriptPath = path.join(__dirname, '../../python/editing/video_processor.py');
-    
+    const isDev = !app.isPackaged;
+    const scriptPath = isDev
+      ? path.join(__dirname, "../../python/editing/video_processor.py")
+      : path.join(
+          process.resourcesPath,
+          "src",
+          "python",
+          "editing",
+          "video_processor.py",
+        );
+
     return new Promise((resolve, reject) => {
-      const args = [
-        scriptPath,
-        videoPath,
-        '--command', 'extract_audio'
-      ];
+      const args = [scriptPath, videoPath, "--command", "extract_audio"];
 
       if (outputPath) {
-        args.push('--output', outputPath);
+        args.push("--output", outputPath);
       }
 
       const process = spawn(this.pythonPath, args);
 
-      let stdout = '';
-      let stderr = '';
+      let stdout = "";
+      let stderr = "";
 
-      process.stdout.on('data', (data) => {
+      process.stdout.on("data", (data) => {
         stdout += data.toString();
       });
 
-      process.stderr.on('data', (data) => {
+      process.stderr.on("data", (data) => {
         stderr += data.toString();
       });
 
-      process.on('close', (code) => {
+      process.on("close", (code) => {
         if (code === 0) {
           // Extract audio file path from output
           const audioPathMatch = stdout.match(/Audio extracted to: (.+)/);
@@ -330,11 +439,14 @@ class PythonBridge extends EventEmitter {
             resolve({ audioPath: outputPath });
           }
         } else {
-          reject({ error: `Audio extraction failed with code ${code}`, stderr });
+          reject({
+            error: `Audio extraction failed with code ${code}`,
+            stderr,
+          });
         }
       });
 
-      process.on('error', (error) => {
+      process.on("error", (error) => {
         reject({ error: `Failed to extract audio: ${error.message}` });
       });
     });

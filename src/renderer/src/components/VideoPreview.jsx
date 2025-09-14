@@ -83,8 +83,6 @@ export const VideoPreview = ({
     setPreviewError(null);
 
     try {
-      console.log(videoInfo);
-
       if (videoInfo) {
         setBlobUrl(videoInfo.createdBlobUrl);
         setPreviewPath(videoInfo.createdBlobUrl);
@@ -118,6 +116,8 @@ export const VideoPreview = ({
           handleVideoInfoLoad((prev) => {
             return { ...prev, createdBlobUrl };
           });
+          console.log("videoInfo " + videoInfo);
+
           console.log("Setting blob video URL:", createdBlobUrl);
           setBlobUrl(createdBlobUrl);
           setPreviewPath(createdBlobUrl);
@@ -429,7 +429,11 @@ export const VideoPreview = ({
           )}
 
           <button
-            onClick={() => onProcessStart && onProcessStart(videoPath)}
+            onClick={() => {
+              if (onProcessStart && videoPath) {
+                onProcessStart(videoPath);
+              }
+            }}
             disabled={disabled}
             className={`
               w-full py-3 px-6 rounded-lg font-medium transition-colors flex items-center justify-center
@@ -472,7 +476,7 @@ export const VideoPreview = ({
               </p>
               <p className="mb-1">
                 <strong>Aspect Ratio:</strong>{" "}
-                {videoInfo.aspectRatio.toFixed(2)}{" "}
+                {videoInfo.aspectRatio?.toFixed(2)}{" "}
                 {videoInfo.isVertical
                   ? "(Vertical)"
                   : videoInfo.isSquare

@@ -1,4 +1,10 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 
 const VideoContext = createContext();
 
@@ -9,9 +15,14 @@ export const VideoProvider = ({ children }) => {
   const handleVideoSelect = (videoPath) => {
     setSelectedVideo(videoPath);
     setVideoInfo(null); // Reset video info when new video is selected
+    console.log(
+      "handleVideoSelect VideoContext:" + videoPath + " " + videoInfo
+    );
   };
 
   const handleVideoInfoLoad = useCallback((info) => {
+    console.log("handleVideoInfoLoad VideoContext: " + info);
+
     setVideoInfo(info);
   });
 
@@ -26,20 +37,18 @@ export const VideoProvider = ({ children }) => {
     handleVideoSelect,
     handleVideoInfoLoad,
     clearVideo,
-    hasVideo: !!selectedVideo
+    hasVideo: !!selectedVideo,
   };
 
   return (
-    <VideoContext.Provider value={value}>
-      {children}
-    </VideoContext.Provider>
+    <VideoContext.Provider value={value}>{children}</VideoContext.Provider>
   );
 };
 
 export const useVideo = () => {
   const context = useContext(VideoContext);
   if (!context) {
-    throw new Error('useVideo must be used within a VideoProvider');
+    throw new Error("useVideo must be used within a VideoProvider");
   }
   return context;
 };

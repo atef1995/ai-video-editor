@@ -1,0 +1,5 @@
+# This file ensures the assets directory is tracked by git
+# Add your application icons here:
+# - icon.ico (Windows)
+# - icon.icns (macOS)
+# - icon.png (Linux)

@@ -107,3 +107,7 @@ docs/subtitle-preview-plan.md
 .claude/agents/python-nodejs-bridge-engineer.md
 .claude/agents/react-electron-component-builder.md
 temp
+release/
+
+# Accidental files
+nul
