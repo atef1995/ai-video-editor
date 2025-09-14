@@ -161,7 +161,7 @@ def main():
     transcriber = WhisperTranscriber(args.model)
 
     # Always create the JSON transcription file
-    result = transcriber.transcribe_to_file(
+    result = transcriber.transcribe_to_srt_file(
         args.input_path,
         args.output_path,
         args.language
@@ -183,20 +183,17 @@ def main():
 
             print("Creating subtitle overlay...")
 
-            # Create SRT file from existing transcription result (no re-transcribing!)
+            # Use the generated SRT file from transcription
             srt_file_path = "subtitles.srt"
-            transcriber.create_srt_from_result(result, srt_file_path)
 
-            # Apply overlay to video
-            overlay_handler = OverlaySubtitles()
             video_output = args.video_output or f"{Path(args.input_path).stem}_with_subtitles.mp4"
+            overlay_handler = OverlaySubtitles(
+                video_path=args.input_path,
+                subtitle_file_path=srt_file_path
+            )
 
             try:
-                final_video = overlay_handler.add_subtitles(
-                    video_path=args.input_path,
-                    srt_file=srt_file_path,
-                    output_path=video_output
-                )
+                final_video = overlay_handler.add_subtitles(video_output)
                 print(f"Video with subtitles created: {final_video}")
             except Exception as e:
                 print(f"Failed to add subtitle overlay: {e}", file=sys.stderr)

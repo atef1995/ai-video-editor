@@ -1,244 +1,238 @@
-import openai
+"""
+Content Analyzer for AI Video Editor
+
+This module analyzes video transcripts using OpenAI's GPT models with structured outputs
+to identify engaging video clips. It includes robust error handling for OpenAI API
+response parsing and compatibility with different OpenAI library versions.
+
+Fixed Issue: Handle 'ParsedChatCompletion' object has no attribute 'parsed' error
+by trying multiple response access patterns and providing detailed debugging information.
+"""
+
 import json
 import sys
 import argparse
-from sentence_transformers import SentenceTransformer
-import numpy as np
 from typing import List, Dict, Any
+import openai
+from openai import OpenAI
+from pydantic import BaseModel
+
+
+class VideoClip(BaseModel):
+    start_time: float
+    end_time: float
+    description: str
+
+
+class VideoClipsAnalysis(BaseModel):
+    clips: List[VideoClip]
+
 
 class ContentAnalyzer:
-    def __init__(self, openai_api_key=None):
+    def __init__(self, openai_api_key=None, debug=False):
         """
-        Initialize content analyzer with AI models
+        Initialize content analyzer with GPT for clip identification
         Args:
             openai_api_key (str): OpenAI API key for GPT analysis
+            debug (bool): Enable debug logging for troubleshooting
         """
         if openai_api_key:
-            openai.api_key = openai_api_key
-        
-        # Load sentence transformer for semantic similarity
+            self.client = OpenAI(api_key=openai_api_key)
+        else:
+            self.client = None
+        self.debug = debug
+
+    def check_openai_version(self):
+        """Check OpenAI library version and provide recommendations."""
         try:
-            self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
-        except:
-            self.sentence_model = None
-            print("Warning: Could not load sentence transformer model")
-    
+            version = openai.__version__
+            if self.debug:
+                print(f"Debug: OpenAI library version: {version}")
+
+            # Parse version to check if it's recent enough for structured outputs
+            version_parts = version.split('.')
+            major = int(version_parts[0])
+            minor = int(version_parts[1]) if len(version_parts) > 1 else 0
+
+            # Structured outputs require OpenAI library >= 1.40.0 (approximate)
+            if major < 1 or (major == 1 and minor < 40):
+                return {
+                    "warning": f"OpenAI library version {version} may not fully support structured outputs. Consider upgrading to >= 1.40.0"
+                }
+
+            return {"version": version, "compatible": True}
+        except Exception as e:
+            return {"error": f"Could not check OpenAI version: {str(e)}"}
+
     def analyze_transcript_with_gpt(self, transcript_data: Dict) -> Dict:
         """
-        Analyze transcript content using GPT-4 to identify key moments and topics
+        Analyze transcript using GPT to identify clips with exact timestamps
         """
-        if not openai.api_key:
+        if not self.client:
             return {"error": "OpenAI API key not provided"}
-        
-        # Combine all segments into full text
-        full_text = transcript_data.get('text', '')
+
+        # Check OpenAI library version for compatibility
+        version_check = self.check_openai_version()
+        if "warning" in version_check and self.debug:
+            print(f"Warning: {version_check['warning']}")
+        elif "error" in version_check and self.debug:
+            print(f"Version check error: {version_check['error']}")
+
+        # Get segments with timestamps
         segments = transcript_data.get('segments', [])
-        
-        # Create prompt for GPT analysis
-        prompt = f"""
-        Analyze this video transcript for creating engaging short clips. Please identify:
-        
-        1. Key topics and themes discussed
-        2. Most engaging moments with high energy or important information
-        3. Natural clip boundaries (complete thoughts/topics)
-        4. Emotional peaks (excitement, surprise, revelation)
-        5. Actionable insights or valuable takeaways
-        
-        Transcript:
-        {full_text[:4000]}  # Limit to avoid token limits
-        
-        Please respond in JSON format with:
-        {{
-            "topics": ["topic1", "topic2", ...],
-            "key_moments": [
-                {{
-                    "start_time": float,
-                    "end_time": float,
-                    "description": "why this moment is engaging",
-                    "engagement_score": int (1-100),
-                    "emotional_tone": "string",
-                    "contains_action_items": boolean
-                }}
-            ],
-            "overall_sentiment": "string",
-            "content_type": "educational/entertainment/interview/etc"
-        }}
-        """
-        
-        try:
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are an expert video content analyzer specializing in identifying engaging moments for short-form content."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=2000,
-                temperature=0.3
+        if not segments:
+            return {"error": "No transcript segments found"}
+
+        # Create formatted transcript with timestamps
+        transcript_with_timestamps = []
+        for segment in segments:
+            transcript_with_timestamps.append(
+                f"[{segment['start']:.2f}s - {segment['end']:.2f}s]: {segment['text']}"
             )
-            
-            # Parse JSON response
-            analysis_text = response.choices[0].message.content
-            return json.loads(analysis_text)
-            
+
+        formatted_transcript = '\n'.join(
+            transcript_with_timestamps[:100])  # Limit to avoid token limits
+
+        system_message = """You are an expert video content analyzer specializing in identifying engaging moments for short-form content.
+        You will analyze timestamped video transcripts and extract the most compelling clips that would work well for social media, marketing, or content creation."""
+
+        user_message = f"""Analyze this timestamped video transcript and identify the most engaging clips for short-form content.
+
+        Transcript with timestamps:
+        {formatted_transcript}
+
+        Requirements:
+        - Use EXACT start_time and end_time values from the transcript
+        - Identify 3-8 clips maximum
+        - Each clip should be 30-90 seconds long
+        - Focus on complete thoughts or segments
+        - Choose the most engaging, shareable moments (high energy, valuable insights, emotional peaks, actionable content)
+        - Provide a brief description of why each clip is engaging"""
+
+        try:
+            response = self.client.beta.chat.completions.parse(
+                model="gpt-4o-2024-08-06",
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": user_message}
+                ],
+                response_format=VideoClipsAnalysis,
+                temperature=0.2
+            )
+
+            # Handle different response structures for OpenAI structured output
+            analysis_result = None
+
+            # Debug: Log response structure if debug mode is enabled
+            if self.debug:
+                print(f"Debug: Response type: {type(response)}")
+                print(f"Debug: Response attributes: {dir(response)}")
+                if hasattr(response, 'choices'):
+                    print(
+                        f"Debug: Response choices length: {len(response.choices)}")
+                    if len(response.choices) > 0:
+                        print(
+                            f"Debug: First choice message attributes: {dir(response.choices[0].message)}")
+
+            # Try different ways to access the parsed result
+            if hasattr(response, 'parsed'):
+                analysis_result = response.parsed
+                if self.debug:
+                    print("Debug: Successfully accessed response.parsed")
+            elif hasattr(response, 'choices') and len(response.choices) > 0:
+                # Alternative: access via choices[0].message.parsed
+                if hasattr(response.choices[0].message, 'parsed'):
+                    analysis_result = response.choices[0].message.parsed
+                    if self.debug:
+                        print(
+                            "Debug: Successfully accessed response.choices[0].message.parsed")
+                elif hasattr(response.choices[0].message, 'content'):
+                    # Fallback: try to parse JSON content manually
+                    try:
+                        content = response.choices[0].message.content
+                        if self.debug:
+                            print(
+                                f"Debug: Attempting to parse JSON content: {content[:200]}...")
+                        parsed_json = json.loads(content)
+                        # Create VideoClipsAnalysis instance from parsed JSON
+                        analysis_result = VideoClipsAnalysis(**parsed_json)
+                        if self.debug:
+                            print("Debug: Successfully parsed JSON content manually")
+                    except (json.JSONDecodeError, TypeError, ValueError) as json_error:
+                        return {"error": f"Failed to parse JSON response: {str(json_error)}"}
+
+            if analysis_result is None:
+                error_details = f"Response type: {type(response)}, Response attributes: {dir(response)}"
+                return {"error": f"Could not extract parsed result from OpenAI response. Response structure may have changed. {error_details}"}
+
+            # Convert Pydantic model to dict for compatibility
+            clips_data = []
+            for clip in analysis_result.clips:
+                clips_data.append({
+                    "start_time": clip.start_time,
+                    "end_time": clip.end_time,
+                    "description": clip.description
+                })
+
+            return {"clips": clips_data}
+
+        except AttributeError as attr_error:
+            return {"error": f"GPT analysis failed - attribute error: {str(attr_error)}. This may indicate an OpenAI library version compatibility issue."}
         except Exception as e:
             return {"error": f"GPT analysis failed: {str(e)}"}
-    
-    def find_topic_segments(self, transcript_data: Dict, similarity_threshold=0.7) -> List[Dict]:
+
+    def analyze_content(self, transcript_data: Dict) -> Dict:
         """
-        Use sentence transformers to find semantically similar segments
+        Analyze content using only GPT to identify clips with timestamps
         """
-        if not self.sentence_model:
-            return []
-        
+        # Get basic metadata
         segments = transcript_data.get('segments', [])
-        if len(segments) < 2:
-            return segments
-        
-        # Get embeddings for each segment
-        segment_texts = [seg['text'] for seg in segments]
-        embeddings = self.sentence_model.encode(segment_texts)
-        
-        # Group similar segments
-        topic_segments = []
-        used_indices = set()
-        
-        for i, embedding in enumerate(embeddings):
-            if i in used_indices:
-                continue
-                
-            # Find similar segments
-            similarities = np.dot(embeddings, embedding) / (
-                np.linalg.norm(embeddings, axis=1) * np.linalg.norm(embedding)
-            )
-            
-            similar_indices = [
-                j for j, sim in enumerate(similarities) 
-                if sim > similarity_threshold and j not in used_indices
-            ]
-            
-            if similar_indices:
-                # Create topic segment
-                start_time = min(segments[j]['start'] for j in similar_indices)
-                end_time = max(segments[j]['end'] for j in similar_indices)
-                combined_text = ' '.join(segments[j]['text'] for j in similar_indices)
-                
-                topic_segments.append({
-                    'start_time': start_time,
-                    'end_time': end_time,
-                    'text': combined_text,
-                    'segment_count': len(similar_indices),
-                    'avg_similarity': np.mean([similarities[j] for j in similar_indices])
-                })
-                
-                used_indices.update(similar_indices)
-        
-        return topic_segments
-    
-    def score_engagement(self, text: str, duration: float) -> Dict:
-        """
-        Score engagement potential of a text segment
-        """
-        engagement_indicators = {
-            'questions': ['?', 'what', 'how', 'why', 'when', 'where'],
-            'excitement': ['!', 'amazing', 'incredible', 'wow', 'fantastic'],
-            'actionable': ['should', 'must', 'need to', 'important', 'key'],
-            'emotional': ['love', 'hate', 'fear', 'excited', 'surprised'],
-            'numbers': ['first', 'second', 'three', 'million', 'percent']
-        }
-        
-        text_lower = text.lower()
-        scores = {}
-        
-        for category, indicators in engagement_indicators.items():
-            score = sum(1 for indicator in indicators if indicator in text_lower)
-            scores[category] = score
-        
-        # Calculate overall engagement score
-        total_score = sum(scores.values())
-        
-        # Adjust for duration (shorter clips often more engaging)
-        duration_factor = max(0.5, min(1.0, 30 / max(duration, 1)))
-        
-        engagement_score = min(100, int(total_score * 10 * duration_factor))
-        
+        total_duration = segments[-1]['end'] if segments else 0
+
+        # Get GPT analysis with clip recommendations
+        gpt_analysis = self.analyze_transcript_with_gpt(transcript_data)
+
         return {
-            'engagement_score': engagement_score,
-            'category_scores': scores,
-            'duration_factor': duration_factor
-        }
-    
-    def analyze_full_content(self, transcript_data: Dict) -> Dict:
-        """
-        Perform comprehensive content analysis
-        """
-        results = {
             'timestamp': transcript_data.get('timestamp'),
             'language': transcript_data.get('language'),
-            'total_duration': 0
+            'total_duration': total_duration,
+            'clips': gpt_analysis.get('clips', []),
+            'error': gpt_analysis.get('error')
         }
-        
-        # Calculate total duration
-        segments = transcript_data.get('segments', [])
-        if segments:
-            results['total_duration'] = segments[-1]['end']
-        
-        # GPT-4 analysis
-        gpt_analysis = self.analyze_transcript_with_gpt(transcript_data)
-        results['gpt_analysis'] = gpt_analysis
-        
-        # Topic segmentation
-        topic_segments = self.find_topic_segments(transcript_data)
-        results['topic_segments'] = topic_segments
-        
-        # Engagement scoring for each segment
-        segment_scores = []
-        for segment in segments:
-            duration = segment['end'] - segment['start']
-            engagement = self.score_engagement(segment['text'], duration)
-            
-            segment_scores.append({
-                'start': segment['start'],
-                'end': segment['end'],
-                'text': segment['text'],
-                'duration': duration,
-                **engagement
-            })
-        
-        results['segment_scores'] = segment_scores
-        
-        # Find top engaging segments
-        top_segments = sorted(
-            segment_scores, 
-            key=lambda x: x['engagement_score'], 
-            reverse=True
-        )[:10]  # Top 10 most engaging segments
-        
-        results['top_engaging_segments'] = top_segments
-        
-        return results
+
 
 def main():
-    parser = argparse.ArgumentParser(description='Analyze video content for AI processing')
+    parser = argparse.ArgumentParser(
+        description='Analyze video content for AI processing')
     parser.add_argument('transcript_path', help='Path to transcript JSON file')
-    parser.add_argument('output_path', help='Path to output analysis JSON file')
+    parser.add_argument(
+        'output_path', help='Path to output analysis JSON file')
     parser.add_argument('--openai-key', help='OpenAI API key')
-    
+    parser.add_argument('--debug', action='store_true',
+                        help='Enable debug logging')
+
     args = parser.parse_args()
-    
+
     # Load transcript
     with open(args.transcript_path, 'r', encoding='utf-8') as f:
         transcript_data = json.load(f)
-    
+
     # Analyze content
-    analyzer = ContentAnalyzer(args.openai_key)
-    analysis = analyzer.analyze_full_content(transcript_data)
-    
+    analyzer = ContentAnalyzer(args.openai_key, debug=args.debug)
+    analysis = analyzer.analyze_content(transcript_data)
+
     # Save results
     with open(args.output_path, 'w', encoding='utf-8') as f:
         json.dump(analysis, f, indent=2, ensure_ascii=False)
-    
+
+    if analysis.get('error'):
+        print(f"Analysis failed: {analysis['error']}")
+        sys.exit(1)
+
+    clips = analysis.get('clips', [])
     print(f"Content analysis completed")
-    print(f"Found {len(analysis.get('top_engaging_segments', []))} top engaging segments")
+    print(f"Found {len(clips)} clips for video editing")
+
 
 if __name__ == "__main__":
     main()

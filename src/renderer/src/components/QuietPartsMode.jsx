@@ -120,6 +120,7 @@ export const QuietPartsMode = () => {
           <VideoUpload
             onVideoSelect={handleVideoSelectLocal}
             disabled={isProcessing}
+            hasVideo={hasVideo}
           />
           
           {selectedVideo && (

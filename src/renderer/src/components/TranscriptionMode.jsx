@@ -172,18 +172,10 @@ export const TranscriptionMode = () => {
     return [
       {
         id: 'demo-1',
-        text: 'This is a sample subtitle to test positioning',
+        text: 'Drag and resize to position where you want subtitles to appear',
         startTime: 0,
         endTime: 5,
         position: { x: 10, y: 80 },
-        size: { width: 80, height: 10 }
-      },
-      {
-        id: 'demo-2',
-        text: 'Drag and resize to position where you want subtitles',
-        startTime: 5,
-        endTime: 10,
-        position: { x: 10, y: 15 },
         size: { width: 80, height: 10 }
       }
     ];
@@ -224,9 +216,23 @@ export const TranscriptionMode = () => {
     setError(null);
 
     try {
-      // Start transcription with positioning data
+      // Extract text style from subtitle data or use defaults
+      const textStyle = subtitleData.length > 0 && subtitleData[0].style
+        ? subtitleData[0].style
+        : {
+            fontSize: 24,
+            color: 'white',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            fontFamily: 'Arial, sans-serif',
+            fontWeight: 'bold',
+            strokeColor: 'black',
+            strokeWidth: 2
+          };
+
+      // Start transcription with positioning data and text style
       const transcriptionOptions = {
         ...settings,
+        textStyle: textStyle,
         subtitlePositions: subtitleData.length > 0 ? subtitleData : null
       };
 
@@ -366,6 +372,7 @@ export const TranscriptionMode = () => {
           <VideoUpload
             onVideoSelect={handleVideoSelectLocal}
             disabled={isProcessing}
+            hasVideo={!!selectedVideo}
           />
           
           {selectedVideo && (

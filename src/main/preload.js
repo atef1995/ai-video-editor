@@ -86,5 +86,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // File system operations
   openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),
-  showFileInFolder: (filePath) => ipcRenderer.invoke('show-file-in-folder', filePath)
+  showFileInFolder: (filePath) => ipcRenderer.invoke('show-file-in-folder', filePath),
+  showClipsInFolder: () => ipcRenderer.invoke('show-clips-in-folder'),
+
+  // Settings management
+  saveSetting: (key, value, isEncrypted) => ipcRenderer.invoke('save-setting', key, value, isEncrypted),
+  getSetting: (key, defaultValue) => ipcRenderer.invoke('get-setting', key, defaultValue),
+  getAllSettings: () => ipcRenderer.invoke('get-all-settings'),
+  deleteSetting: (key) => ipcRenderer.invoke('delete-setting', key),
+  isEncryptionAvailable: () => ipcRenderer.invoke('is-encryption-available'),
+
+  // External links
+  openExternal: (url) => ipcRenderer.invoke('open-external', url)
 });

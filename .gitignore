@@ -102,3 +102,8 @@ temp/transcriptions
 docs/JUMPCUTTER.md
 docs/PROGRESS_TRACKING.md
 docs/subtitle-preview-plan.md
+*.mp4
+*.srt
+.claude/agents/python-nodejs-bridge-engineer.md
+.claude/agents/react-electron-component-builder.md
+temp

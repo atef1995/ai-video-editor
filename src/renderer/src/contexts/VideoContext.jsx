@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
 const VideoContext = createContext();
 
@@ -11,9 +11,9 @@ export const VideoProvider = ({ children }) => {
     setVideoInfo(null); // Reset video info when new video is selected
   };
 
-  const handleVideoInfoLoad = (info) => {
+  const handleVideoInfoLoad = useCallback((info) => {
     setVideoInfo(info);
-  };
+  });
 
   const clearVideo = () => {
     setSelectedVideo(null);

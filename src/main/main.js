@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, protocol, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const isDev = !app.isPackaged; // More reliable way to detect development mode
@@ -415,6 +415,170 @@ ipcMain.handle('show-file-in-folder', async (event, filePath) => {
     return { success: true };
   } catch (error) {
     console.error('Failed to show file in folder:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Show generated clips in folder
+ipcMain.handle('show-clips-in-folder', async () => {
+  try {
+    const tempDir = path.join(__dirname, '../../temp');
+    const outputDir = path.join(tempDir, 'output');
+
+    // Check if output directory exists
+    if (fs.existsSync(outputDir)) {
+      await shell.openPath(outputDir);
+      return { success: true };
+    } else {
+      // Fall back to temp directory if output doesn't exist
+      await shell.openPath(tempDir);
+      return { success: true, message: 'Opened temp directory - output folder not found' };
+    }
+  } catch (error) {
+    console.error('Failed to show clips folder:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Settings storage handlers
+const SETTINGS_FILE_PATH = path.join(app.getPath('userData'), 'app-settings.json');
+
+// Helper to load settings from file
+function loadSettingsFromFile() {
+  try {
+    if (fs.existsSync(SETTINGS_FILE_PATH)) {
+      const data = fs.readFileSync(SETTINGS_FILE_PATH, 'utf8');
+      return JSON.parse(data);
+    }
+    return {};
+  } catch (error) {
+    console.error('Failed to load settings:', error);
+    return {};
+  }
+}
+
+// Helper to save settings to file
+function saveSettingsToFile(settings) {
+  try {
+    const dir = path.dirname(SETTINGS_FILE_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify(settings, null, 2));
+    return true;
+  } catch (error) {
+    console.error('Failed to save settings:', error);
+    return false;
+  }
+}
+
+ipcMain.handle('save-setting', async (event, key, value, isEncrypted = false) => {
+  try {
+    const settings = loadSettingsFromFile();
+
+    if (isEncrypted && safeStorage.isEncryptionAvailable()) {
+      // Encrypt sensitive values like API keys
+      const encryptedBuffer = safeStorage.encryptString(value);
+      settings[key] = {
+        encrypted: true,
+        value: encryptedBuffer.toString('base64')
+      };
+    } else {
+      // Store non-sensitive values as plain text
+      settings[key] = {
+        encrypted: false,
+        value: value
+      };
+    }
+
+    const success = saveSettingsToFile(settings);
+    return { success, message: success ? 'Setting saved successfully' : 'Failed to save setting' };
+  } catch (error) {
+    console.error('Error saving setting:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-setting', async (event, key, defaultValue = null) => {
+  try {
+    const settings = loadSettingsFromFile();
+
+    if (!settings[key]) {
+      return { success: true, value: defaultValue };
+    }
+
+    const setting = settings[key];
+
+    if (setting.encrypted && safeStorage.isEncryptionAvailable()) {
+      // Decrypt the value
+      try {
+        const buffer = Buffer.from(setting.value, 'base64');
+        const decryptedValue = safeStorage.decryptString(buffer);
+        return { success: true, value: decryptedValue };
+      } catch (decryptError) {
+        console.error('Failed to decrypt setting:', decryptError);
+        return { success: false, error: 'Failed to decrypt setting' };
+      }
+    } else {
+      // Return plain text value
+      return { success: true, value: setting.value };
+    }
+  } catch (error) {
+    console.error('Error getting setting:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-all-settings', async () => {
+  try {
+    const settings = loadSettingsFromFile();
+    const decryptedSettings = {};
+
+    for (const [key, setting] of Object.entries(settings)) {
+      if (setting.encrypted && safeStorage.isEncryptionAvailable()) {
+        try {
+          const buffer = Buffer.from(setting.value, 'base64');
+          const decryptedValue = safeStorage.decryptString(buffer);
+          decryptedSettings[key] = decryptedValue;
+        } catch (decryptError) {
+          console.error(`Failed to decrypt setting ${key}:`, decryptError);
+          decryptedSettings[key] = null;
+        }
+      } else {
+        decryptedSettings[key] = setting.value;
+      }
+    }
+
+    return { success: true, settings: decryptedSettings };
+  } catch (error) {
+    console.error('Error getting all settings:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('delete-setting', async (event, key) => {
+  try {
+    const settings = loadSettingsFromFile();
+    delete settings[key];
+    const success = saveSettingsToFile(settings);
+    return { success, message: success ? 'Setting deleted successfully' : 'Failed to delete setting' };
+  } catch (error) {
+    console.error('Error deleting setting:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('is-encryption-available', () => {
+  return { available: safeStorage.isEncryptionAvailable() };
+});
+
+// Open external URL
+ipcMain.handle('open-external', async (event, url) => {
+  try {
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to open external URL:', error);
     return { success: false, error: error.message };
   }
 });

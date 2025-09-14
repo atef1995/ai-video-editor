@@ -9,7 +9,10 @@ class PythonBridge extends EventEmitter {
     super();
     this.tempDir = path.join(__dirname, '../../../temp');
     this.currentProcess = null;
-    
+    this.processingStartTime = null;
+    this.stepStartTime = null;
+    this.stepTimes = new Map();
+
     // Determine if we're in development or production
     const isDev = !app.isPackaged;
     
@@ -104,6 +107,11 @@ class PythonBridge extends EventEmitter {
 
       console.log('Starting Python AI pipeline:', args);
 
+      // Track processing start time
+      this.processingStartTime = Date.now();
+      this.stepStartTime = Date.now();
+      this.stepTimes.clear();
+
       this.currentProcess = spawn(this.pythonPath, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env }
@@ -115,13 +123,54 @@ class PythonBridge extends EventEmitter {
       this.currentProcess.stdout.on('data', (data) => {
         const output = data.toString();
         stdout += output;
-        
-        // Parse progress updates
+
+        // Parse progress updates with detailed information
         const progressMatch = output.match(/\[(\d+\.\d+)%\] (.+)/);
         if (progressMatch) {
           const progress = parseFloat(progressMatch[1]);
           const step = progressMatch[2];
-          this.emit('progress', { progress, step });
+          const now = Date.now();
+
+          // Calculate step duration if this is a new step
+          const lastStepTime = this.stepTimes.get(step);
+          let stepDuration = null;
+
+          if (lastStepTime) {
+            stepDuration = now - lastStepTime;
+          } else if (this.stepStartTime) {
+            stepDuration = now - this.stepStartTime;
+            this.stepTimes.set(step, now);
+            this.stepStartTime = now;
+          }
+
+          // Parse additional details from output
+          const detailsMatch = output.match(/Details: (.+)/);
+          const details = detailsMatch ? detailsMatch[1].trim() : '';
+
+          // Calculate total elapsed time
+          const totalElapsed = this.processingStartTime ? now - this.processingStartTime : 0;
+
+          this.emit('progress', {
+            progress,
+            step,
+            stepDuration,
+            totalElapsed,
+            details
+          });
+        }
+
+        // Parse specific step completion messages
+        const stepCompleteMatch = output.match(/Completed: (.+) in (.+)/);
+        if (stepCompleteMatch) {
+          const completedStep = stepCompleteMatch[1];
+          const duration = stepCompleteMatch[2];
+
+          this.emit('progress', {
+            progress: null, // Don't update progress bar
+            step: `✓ ${completedStep}`,
+            stepDuration: duration,
+            details: `Completed in ${duration}`
+          });
         }
 
         // Emit raw output for debugging
@@ -142,17 +191,23 @@ class PythonBridge extends EventEmitter {
       this.currentProcess.on('close', async (code) => {
         this.currentProcess = null;
 
+        console.log(`Python process closed with code: ${code}`);
+        console.log(`STDOUT: ${stdout}`);
+        console.log(`STDERR: ${stderr}`);
+
         if (code === 0) {
           try {
             // Try to read results file
             const videoName = path.basename(videoPath, path.extname(videoPath));
             const resultsPath = path.join(outputDir, `${videoName}_results.json`);
-            
+
+            console.log(`Looking for results file at: ${resultsPath}`);
             const resultsData = await fs.readFile(resultsPath, 'utf-8');
             const results = JSON.parse(resultsData);
-            
+
             resolve(results);
           } catch (error) {
+            console.error(`Failed to read results file: ${error.message}`);
             resolve({
               success: false,
               error: `Failed to read results: ${error.message}`,
@@ -186,6 +241,12 @@ class PythonBridge extends EventEmitter {
     if (this.currentProcess) {
       this.currentProcess.kill('SIGTERM');
       this.currentProcess = null;
+
+      // Reset timing information
+      this.processingStartTime = null;
+      this.stepStartTime = null;
+      this.stepTimes.clear();
+
       this.emit('cancelled');
       return true;
     }
