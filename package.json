@@ -62,11 +62,19 @@
       "!node_modules/**/tests/**/*",
       "!node_modules/**/*.md",
       "!node_modules/**/.github/**/*",
-      "!**/*.map"
+      "!**/*.map",
+      "!node_modules/@tailwindcss/oxide-darwin-*/**/*",
+      "!node_modules/@tailwindcss/oxide-linux-*/**/*"
     ],
     "extraResources": [
       "src/python/**/*"
     ],
+    "asarUnpack": [
+      "node_modules/sqlite3/**/*"
+    ],
+    "nodeGypRebuild": false,
+    "buildDependenciesFromSource": false,
+    "electronLanguages": ["en-US"],
     "win": {
       "target": [
         {
