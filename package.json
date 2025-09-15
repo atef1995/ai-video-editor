@@ -75,8 +75,7 @@
         {
           "target": "nsis",
           "arch": [
-            "x64",
-            "ia32"
+            "x64"
           ]
         },
         {
@@ -85,7 +84,8 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "compression": "store"
     },
     "mac": {
       "icon": "assets/icon.icns",
