@@ -26,38 +26,8 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
-          cache: "pip"
-          cache-dependency-path: |
-            requirements.txt
-            src/python/cut-quiet-parts/requirements.txt
-
-      - name: Install FFmpeg (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt update
-          sudo apt install -y ffmpeg
-
-      - name: Install FFmpeg (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          brew install ffmpeg
-
-      - name: Install FFmpeg (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          choco install ffmpeg
-
       - name: Install Node.js dependencies
         run: npm ci
-
-      - name: Install minimal Python dependencies
-        run: |
-          pip install --upgrade pip setuptools wheel
-        continue-on-error: true
 
       - name: Build application (skip Python for faster builds)
         run: npm run build
