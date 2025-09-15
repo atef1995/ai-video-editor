@@ -68,7 +68,8 @@
       "!node_modules/@tailwindcss/oxide-linux-*/**/*"
     ],
     "extraResources": [
-      "src/python/**/*"
+      "src/python/**/*",
+      "python-dist/**/*"
     ],
     "asarUnpack": [
       "node_modules/sqlite3/**/*"

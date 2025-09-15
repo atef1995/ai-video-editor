@@ -26,6 +26,11 @@ jobs:
           node-version: "20"
           cache: "npm"
 
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
       - name: Install Node.js dependencies
         run: npm ci
 
@@ -33,21 +38,21 @@ jobs:
         run: npm run build
 
       - name: Build distributables (Windows x64)
-        run: npm run dist:quick -- --win
+        run: npm run dist -- --win
         if: matrix.os == 'windows-latest'
         timeout-minutes: 20
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build distributables (macOS)
-        run: npm run dist:quick -- --mac
+        run: npm run dist -- --mac
         if: matrix.os == 'macos-latest'
         timeout-minutes: 20
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build distributables (Linux)
-        run: npm run dist:quick -- --linux
+        run: npm run dist -- --linux
         if: matrix.os == 'ubuntu-latest'
         timeout-minutes: 20
         env:
