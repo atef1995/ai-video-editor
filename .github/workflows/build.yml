@@ -83,9 +83,14 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/windows-latest-build/**/*
-            artifacts/macos-latest-build/**/*
-            artifacts/ubuntu-latest-build/**/*
+            artifacts/windows-latest-build/**/*.exe
+            artifacts/windows-latest-build/**/*.exe.blockmap
+            artifacts/windows-latest-build/**/latest.yml
+            artifacts/macos-latest-build/**/*.dmg
+            artifacts/macos-latest-build/**/*.dmg.blockmap
+            artifacts/macos-latest-build/**/latest-mac.yml
+            artifacts/ubuntu-latest-build/**/*.AppImage
+            artifacts/ubuntu-latest-build/**/latest-linux.yml
           draft: false
           prerelease: contains(github.ref, 'beta') || contains(github.ref, 'alpha')
           generate_release_notes: true
