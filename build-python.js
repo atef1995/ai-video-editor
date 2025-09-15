@@ -43,32 +43,39 @@ async function buildPythonExecutables() {
       
       // Install PyInstaller if not present
       try {
-        execSync('pyinstaller --version', { stdio: 'pipe' });
+        execSync('python -c "import PyInstaller; print(PyInstaller.__version__)"', { stdio: 'pipe' });
       } catch {
         console.log('📥 Installing PyInstaller...');
         execSync('pip install pyinstaller', { stdio: 'inherit' });
       }
-      
+
       // Build executable with PyInstaller
       console.log('🔨 Creating executable...');
       const outputDir = path.join(buildDir, script.name);
-      
+
+      const excludes = [
+        'tensorflow', 'torch', 'torchvision', 'matplotlib', 'jupyter',
+        'IPython', 'notebook', 'tkinter', 'PyQt5', 'PyQt6', 'PySide2', 'PySide6'
+      ];
+
       const pyinstallerCmd = [
-        'pyinstaller',
+        `python "${path.join(__dirname, 'run_pyinstaller.py')}"`,
         '--onefile',  // Create single executable
-        '--windowed', // No console window (for GUI apps)
+        '--console',  // Keep console for debugging
         '--name', script.name,
         '--distpath', outputDir,
         '--workpath', path.join(buildDir, 'temp', script.name),
         '--specpath', path.join(buildDir, 'specs'),
         '--clean',
+        ...excludes.map(exc => `--exclude-module ${exc}`),
         `"${script.entry}"`
       ].join(' ');
       
       console.log(`Running: ${pyinstallerCmd}`);
-      execSync(pyinstallerCmd, { 
+      execSync(pyinstallerCmd, {
         stdio: 'inherit',
-        cwd: path.dirname(script.entry)
+        cwd: path.dirname(script.entry),
+        timeout: 600000 // 10 minutes timeout
       });
       
       console.log(`✅ ${script.name} built successfully!`);

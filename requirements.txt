@@ -9,5 +9,4 @@ moviepy
 transformers
 sentence-transformers
 spacy
-sqlite3
 ffmpeg-python
