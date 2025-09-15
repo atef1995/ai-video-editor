@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(npx tailwindcss init:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(gh run view:*)"
     ],
     "deny": [],
     "ask": []
