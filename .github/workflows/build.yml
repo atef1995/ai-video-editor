@@ -8,13 +8,38 @@ on:
     branches: [main]
 
 jobs:
+  build-python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Build Python executables
+        run: npm run build:python
+        timeout-minutes: 25
+
+      - name: Upload Python artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-executables
+          path: python-dist/**/*
+
   build:
+    needs: build-python
     strategy:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
 
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
@@ -26,35 +51,36 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - name: Download Python executables
+        uses: actions/download-artifact@v4
         with:
-          python-version: "3.11"
+          name: python-executables
+          path: python-dist
 
       - name: Install Node.js dependencies
         run: npm ci
 
-      - name: Build application (skip Python for faster builds)
+      - name: Build application
         run: npm run build
 
       - name: Build distributables (Windows x64)
-        run: npm run dist -- --win
+        run: npm run dist:quick -- --win
         if: matrix.os == 'windows-latest'
-        timeout-minutes: 20
+        timeout-minutes: 15
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build distributables (macOS)
-        run: npm run dist -- --mac
+        run: npm run dist:quick -- --mac
         if: matrix.os == 'macos-latest'
-        timeout-minutes: 20
+        timeout-minutes: 15
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build distributables (Linux)
-        run: npm run dist -- --linux
+        run: npm run dist:quick -- --linux
         if: matrix.os == 'ubuntu-latest'
-        timeout-minutes: 20
+        timeout-minutes: 15
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
