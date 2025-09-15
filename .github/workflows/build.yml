@@ -54,26 +54,25 @@ jobs:
       - name: Install Node.js dependencies
         run: npm ci
 
-      - name: Install Python dependencies
+      - name: Install minimal Python dependencies
         run: |
-          pip install --no-deps -r requirements.txt
-          pip install --no-deps -r src/python/cut-quiet-parts/requirements.txt
-          pip install --upgrade setuptools wheel
+          pip install --upgrade pip setuptools wheel
+        continue-on-error: true
 
 
       - name: Build application (skip Python for faster builds)
         run: npm run build
 
-      - name: Build distributables (x64 only)
-        run: npm run dist:win
+      - name: Build distributables (Windows x64)
+        run: npm run dist:quick -- --win
         if: matrix.os == 'windows-latest'
 
       - name: Build distributables (macOS)
-        run: npm run dist:mac
+        run: npm run dist:quick -- --mac
         if: matrix.os == 'macos-latest'
 
       - name: Build distributables (Linux)
-        run: npm run dist:linux
+        run: npm run dist:quick -- --linux
         if: matrix.os == 'ubuntu-latest'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
