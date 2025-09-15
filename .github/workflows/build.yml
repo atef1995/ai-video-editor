@@ -36,11 +36,15 @@ jobs:
         run: npm run dist:quick -- --win
         if: matrix.os == 'windows-latest'
         timeout-minutes: 20
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build distributables (macOS)
         run: npm run dist:quick -- --mac
         if: matrix.os == 'macos-latest'
         timeout-minutes: 20
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build distributables (Linux)
         run: npm run dist:quick -- --linux
