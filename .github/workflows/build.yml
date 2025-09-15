@@ -14,6 +14,7 @@ jobs:
         os: [windows-latest, macos-latest, ubuntu-latest]
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
 
     steps:
       - name: Checkout code
@@ -55,21 +56,28 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install -r requirements.txt
-          pip install -r src/python/cut-quiet-parts/requirements.txt
+          pip install --no-deps -r requirements.txt
+          pip install --no-deps -r src/python/cut-quiet-parts/requirements.txt
+          pip install --upgrade setuptools wheel
 
       - name: Run tests (if available)
         run: npm test
         continue-on-error: true
 
-      - name: Build Python executables
-        run: npm run build:python
-
-      - name: Build application
+      - name: Build application (skip Python for faster builds)
         run: npm run build
 
-      - name: Build distributables
-        run: npm run dist:quick
+      - name: Build distributables (x64 only)
+        run: npm run dist:win
+        if: matrix.os == 'windows-latest'
+
+      - name: Build distributables (macOS)
+        run: npm run dist:mac
+        if: matrix.os == 'macos-latest'
+
+      - name: Build distributables (Linux)
+        run: npm run dist:linux
+        if: matrix.os == 'ubuntu-latest'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
