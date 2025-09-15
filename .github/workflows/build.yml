@@ -14,7 +14,7 @@ jobs:
         os: [windows-latest, macos-latest, ubuntu-latest]
 
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
@@ -65,14 +65,17 @@ jobs:
       - name: Build distributables (Windows x64)
         run: npm run dist:quick -- --win
         if: matrix.os == 'windows-latest'
+        timeout-minutes: 20
 
       - name: Build distributables (macOS)
         run: npm run dist:quick -- --mac
         if: matrix.os == 'macos-latest'
+        timeout-minutes: 20
 
       - name: Build distributables (Linux)
         run: npm run dist:quick -- --linux
         if: matrix.os == 'ubuntu-latest'
+        timeout-minutes: 20
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
