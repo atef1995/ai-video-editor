@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npx tailwindcss init:*)",
       "Bash(node:*)",
-      "Bash(gh run view:*)"
+      "Bash(gh run view:*)",
+      "Bash(gh auth:*)"
     ],
     "deny": [],
     "ask": []
