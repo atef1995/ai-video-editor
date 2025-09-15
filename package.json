@@ -1,7 +1,7 @@
 {
   "name": "ai-video-editor",
   "version": "1.0.0",
-  "description": "Automatically edits videos. Explanation here: https://www.youtube.com/watch?v=DQ8orIurGxw",
+  "description": "Automatically edits videos.",
   "main": "dist/main/main.js",
   "homepage": "./",
   "scripts": {
@@ -64,7 +64,9 @@
       {
         "from": "python-dist",
         "to": "python",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
@@ -128,7 +130,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "yourusername",
+      "owner": "atef1995",
       "repo": "ai-video-editor"
     }
   }
