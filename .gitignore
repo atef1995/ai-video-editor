@@ -112,3 +112,4 @@ release/
 # Accidental files
 nul
 python-dist/
+.claude

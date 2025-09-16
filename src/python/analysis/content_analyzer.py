@@ -64,7 +64,7 @@ class ContentAnalyzer:
         except Exception as e:
             return {"error": f"Could not check OpenAI version: {str(e)}"}
 
-    def analyze_transcript_with_gpt(self, transcript_data: Dict) -> Dict:
+    def analyze_transcript_with_gpt(self, transcript_data: Dict, clip_settings: Dict = None) -> Dict:
         """
         Analyze transcript using GPT to identify clips with exact timestamps
         """
@@ -93,6 +93,31 @@ class ContentAnalyzer:
         formatted_transcript = '\n'.join(
             transcript_with_timestamps[:100])  # Limit to avoid token limits
 
+        # Use default settings if none provided
+        if clip_settings is None:
+            clip_settings = {
+                'min_duration': 30,
+                'max_duration': 90,
+                'max_clips': 5,
+                'focus_on_high_energy': True,
+                'include_actionable_content': True,
+                'include_emotional_peaks': True,
+                'include_insights': True
+            }
+
+        # Build content preferences based on settings
+        content_preferences = []
+        if clip_settings.get('focus_on_high_energy'):
+            content_preferences.append("high energy moments")
+        if clip_settings.get('include_actionable_content'):
+            content_preferences.append("actionable content")
+        if clip_settings.get('include_emotional_peaks'):
+            content_preferences.append("emotional peaks")
+        if clip_settings.get('include_insights'):
+            content_preferences.append("valuable insights")
+
+        preferences_text = ", ".join(content_preferences) if content_preferences else "engaging content"
+
         system_message = """You are an expert video content analyzer specializing in identifying engaging moments for short-form content.
         You will analyze timestamped video transcripts and extract the most compelling clips that would work well for social media, marketing, or content creation."""
 
@@ -103,10 +128,11 @@ class ContentAnalyzer:
 
         Requirements:
         - Use EXACT start_time and end_time values from the transcript
-        - Identify 3-8 clips maximum
-        - Each clip should be 30-90 seconds long
-        - Focus on complete thoughts or segments
-        - Choose the most engaging, shareable moments (high energy, valuable insights, emotional peaks, actionable content)
+        - Identify {clip_settings.get('max_clips', 5)} clips maximum
+        - Prefer clips that are {clip_settings.get('min_duration', 30)}-{clip_settings.get('max_duration', 90)} seconds long, but shorter clips are acceptable if they contain complete, engaging thoughts
+        - Focus on complete thoughts or natural conversation segments
+        - Prioritize: {preferences_text}
+        - Each clip should be self-contained and understandable without additional context
         - Provide a brief description of why each clip is engaging"""
 
         try:
@@ -181,7 +207,7 @@ class ContentAnalyzer:
         except Exception as e:
             return {"error": f"GPT analysis failed: {str(e)}"}
 
-    def analyze_content(self, transcript_data: Dict) -> Dict:
+    def analyze_content(self, transcript_data: Dict, clip_settings: Dict = None) -> Dict:
         """
         Analyze content using only GPT to identify clips with timestamps
         """
@@ -190,7 +216,7 @@ class ContentAnalyzer:
         total_duration = segments[-1]['end'] if segments else 0
 
         # Get GPT analysis with clip recommendations
-        gpt_analysis = self.analyze_transcript_with_gpt(transcript_data)
+        gpt_analysis = self.analyze_transcript_with_gpt(transcript_data, clip_settings)
 
         return {
             'timestamp': transcript_data.get('timestamp'),

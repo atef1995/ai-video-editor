@@ -138,6 +138,12 @@ class PythonBridge extends EventEmitter {
       outputDir = path.join(this.tempDir, "output"),
       openaiKey = null,
       maxClips = 5,
+      minDuration = 30,
+      maxDuration = 90,
+      focusOnHighEnergy = true,
+      includeActionableContent = true,
+      includeEmotionalPeaks = true,
+      includeInsights = true,
     } = options;
 
     return new Promise((resolve, reject) => {
@@ -152,6 +158,10 @@ class PythonBridge extends EventEmitter {
           outputDir,
           "--max-clips",
           maxClips.toString(),
+          "--min-duration",
+          minDuration.toString(),
+          "--max-duration",
+          maxDuration.toString(),
           "--temp-dir",
           this.tempDir,
         ];
@@ -165,9 +175,27 @@ class PythonBridge extends EventEmitter {
           outputDir,
           "--max-clips",
           maxClips.toString(),
+          "--min-duration",
+          minDuration.toString(),
+          "--max-duration",
+          maxDuration.toString(),
           "--temp-dir",
           this.tempDir,
         ];
+      }
+
+      // Add content preference flags
+      if (focusOnHighEnergy) {
+        args.push("--focus-high-energy");
+      }
+      if (includeActionableContent) {
+        args.push("--include-actionable");
+      }
+      if (includeEmotionalPeaks) {
+        args.push("--include-emotional");
+      }
+      if (includeInsights) {
+        args.push("--include-insights");
       }
 
       if (openaiKey) {

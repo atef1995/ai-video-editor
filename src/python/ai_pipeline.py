@@ -22,15 +22,27 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 
 class AIPipeline:
-    def __init__(self, temp_dir="temp", openai_api_key=None):
+    def __init__(self, temp_dir="temp", openai_api_key=None, clip_settings=None):
         """
         Initialize AI processing pipeline
         Args:
             temp_dir (str): Directory for temporary files
             openai_api_key (str): OpenAI API key for GPT analysis
+            clip_settings (dict): Settings for clip generation
         """
         self.temp_dir = Path(temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
+
+        # Store clip settings with defaults
+        self.clip_settings = clip_settings or {
+            'min_duration': 30,
+            'max_duration': 90,
+            'max_clips': 5,
+            'focus_on_high_energy': True,
+            'include_actionable_content': True,
+            'include_emotional_peaks': True,
+            'include_insights': True
+        }
 
         # Initialize components
         # Use base model for balance of speed/accuracy
@@ -160,7 +172,7 @@ class AIPipeline:
             self.update_progress("Analyzing content with AI", 55)
 
             analysis_path = output_dir / f"{video_name}_analysis.json"
-            analysis_result = self.analyzer.analyze_content(transcript_result)
+            analysis_result = self.analyzer.analyze_content(transcript_result, self.clip_settings)
 
             # Check for analysis errors
             if analysis_result.get('error'):
@@ -173,15 +185,15 @@ class AIPipeline:
             with open(analysis_path, 'w', encoding='utf-8') as f:
                 json.dump(analysis_result, f, indent=2, ensure_ascii=False)
 
-            # Step 5: Generate clips based on analysis (use original video for clips)
+            # Step 5: Generate clips based on analysis (use processed video for clips)
             self.update_progress(
-                "Generating short clips from original video", 75)
+                "Generating short clips from processed video", 75)
 
             clips = self.generate_clips_from_analysis(
-                video_path,  # Use original video for final clips
+                processed_video_path,  # Use processed video for consistent timestamps
                 analysis_result,
                 output_dir,
-                max_clips=5
+                max_clips=self.clip_settings['max_clips']
             )
 
             # Step 6: Post-process and finalize
@@ -190,6 +202,7 @@ class AIPipeline:
             # Generate final results
             results = {
                 'success': True,
+                'original_video_path': video_path,
                 'video_info': video_prep['video_info'],
                 'processed_video_path': processed_video_path,
                 'transcript_path': str(transcript_path),
@@ -197,7 +210,8 @@ class AIPipeline:
                 'thumbnail_path': video_prep['thumbnail_path'],
                 'clips': clips,
                 'processing_time': time.time(),
-                'total_clips_generated': len(clips)
+                'total_clips_generated': len(clips),
+                'note': 'Clips generated from processed video (quiet parts removed) for better timestamp accuracy'
             }
 
             # Save results summary
@@ -253,13 +267,25 @@ class AIPipeline:
 
                 # Validate timestamps
                 duration = end_time - start_time
-                if duration < 5:  # Too short
+                min_duration = self.clip_settings.get('min_duration', 30)
+                max_duration = self.clip_settings.get('max_duration', 90)
+
+                # Only enforce minimum duration if it's greater than 5 seconds
+                # This allows shorter clips if they're naturally that length
+                absolute_minimum = 5
+                if duration < absolute_minimum:  # Too short to be useful
                     print(
-                        f"Skipping clip {i+1}: duration too short ({duration:.1f}s)")
+                        f"Skipping clip {i+1}: duration too short ({duration:.1f}s, absolute minimum: {absolute_minimum}s)")
                     continue
 
-                if duration > 90:  # Too long, trim to 90 seconds
-                    end_time = start_time + 90
+                # If clip is shorter than user's preferred minimum but longer than absolute minimum,
+                # extend it slightly or keep it as is if it's a natural segment boundary
+                if duration < min_duration:
+                    print(f"Clip {i+1} is {duration:.1f}s (shorter than preferred {min_duration}s) but keeping as natural segment")
+
+                if duration > max_duration:  # Too long, trim to max duration
+                    end_time = start_time + max_duration
+                    print(f"Trimming clip {i+1} from {duration:.1f}s to {max_duration}s")
 
                 clip_filename = f"{video_name}_clip_{i+1}_{int(start_time)}.mp4"
                 clip_path = output_dir / clip_filename
@@ -314,15 +340,39 @@ def main():
         '--openai-key', help='OpenAI API key for advanced analysis')
     parser.add_argument('--max-clips', type=int, default=5,
                         help='Maximum clips to generate')
+    parser.add_argument('--min-duration', type=int, default=30,
+                        help='Minimum clip duration in seconds')
+    parser.add_argument('--max-duration', type=int, default=90,
+                        help='Maximum clip duration in seconds')
     parser.add_argument('--temp-dir', default='temp',
                         help='Temporary directory')
+    parser.add_argument('--focus-high-energy', action='store_true',
+                        help='Focus on high energy moments')
+    parser.add_argument('--include-actionable', action='store_true',
+                        help='Include actionable content')
+    parser.add_argument('--include-emotional', action='store_true',
+                        help='Include emotional peaks')
+    parser.add_argument('--include-insights', action='store_true',
+                        help='Include valuable insights')
 
     args = parser.parse_args()
+
+    # Build clip settings from arguments
+    clip_settings = {
+        'min_duration': args.min_duration,
+        'max_duration': args.max_duration,
+        'max_clips': args.max_clips,
+        'focus_on_high_energy': args.focus_high_energy,
+        'include_actionable_content': args.include_actionable,
+        'include_emotional_peaks': args.include_emotional,
+        'include_insights': args.include_insights
+    }
 
     # Initialize pipeline
     pipeline = AIPipeline(
         temp_dir=args.temp_dir,
-        openai_api_key=args.openai_key
+        openai_api_key=args.openai_key,
+        clip_settings=clip_settings
     )
 
     # Process video
