@@ -80,7 +80,22 @@ class JumpcutterBridge extends EventEmitter {
   getBundledScriptPath() {
     // In production, Python scripts are bundled as extraResources at resources/src/python/
     const resourcesPath = process.resourcesPath || path.join(process.cwd(), "resources");
-    return path.join(resourcesPath, "src", "python", "cut-quiet-parts", "jumpcutter.py");
+
+    // Try optimized version first, fallback to original
+    const optimizedPath = path.join(resourcesPath, "src", "python", "cut-quiet-parts", "jumpcutter_optimized.py");
+    const originalPath = path.join(resourcesPath, "src", "python", "cut-quiet-parts", "jumpcutter.py");
+
+    try {
+      const fs = require("fs");
+      if (fs.existsSync(optimizedPath)) {
+        console.log('[JUMPCUTTER] Using bundled optimized implementation');
+        return optimizedPath;
+      }
+    } catch (error) {
+      console.log('[JUMPCUTTER] Optimized script check failed, using original');
+    }
+
+    return originalPath;
   }
 
   checkBundledExecutable() {
@@ -330,6 +345,7 @@ else:
       sampleRate = 44100,
       frameRate = 30,
       frameQuality = 3,
+      timeoutMinutes = 60, // Default 60 minute timeout for jumpcutter
     } = options;
 
     // Ensure output directory exists
@@ -372,8 +388,15 @@ else:
           frameQuality.toString(),
         ];
       } else {
-        // Use Python interpreter with script
+        // Use Python interpreter with script (try optimized version first)
         command = this.pythonPath;
+        // const optimizedScriptPath = this.scriptPath.replace('jumpcutter.py', 'jumpcutter_optimized.py');
+        // const useOptimized = require('fs').existsSync(optimizedScriptPath);
+
+        // if (useOptimized) {
+        //   console.log('[JUMPCUTTER] Using optimized implementation');
+        // }
+
         args = [
           this.scriptPath,
           "--input_file",
@@ -395,6 +418,11 @@ else:
           "--frame_quality",
           frameQuality.toString(),
         ];
+
+        // Add fast mode for quicker processing if silent speed is very high
+        if (silentSpeed > 100) {
+          args.push("--fast_mode");
+        }
       }
 
       console.log("Starting jumpcutter process:", { command, args });
@@ -417,23 +445,153 @@ else:
 
         console.log("[JUMPCUTTER STDOUT]:", output);
 
-        // Parse progress from jumpcutter Python script output
+        // Parse progress from optimized jumpcutter output
 
-        // Detect frame rate detection
-        if (output.includes("Detected frame rate:")) {
+        // Phase detection from optimized script
+        if (output.includes("=== Phase 1: Media Extraction ===")) {
+          this.emit("progress", {
+            progress: 5,
+            step: "Starting media extraction...",
+            phase: "extraction",
+            details: { message: "Parallel frame and audio extraction" },
+          });
+        } else if (output.includes("=== Phase 2: Audio Analysis ===")) {
+          this.emit("progress", {
+            progress: 20,
+            step: "Analyzing audio for silence detection...",
+            phase: "analysis",
+            details: { message: "Processing audio volume levels" },
+          });
+        } else if (output.includes("=== Phase 3: Processing Setup ===")) {
           this.emit("progress", {
             progress: 30,
-            step: "Analyzing video metadata...",
-            phase: "analysis",
-            details: { message: output.trim() },
+            step: "Setting up optimized processors...",
+            phase: "setup",
+            details: { message: "Initializing frame and audio managers" },
+          });
+        } else if (output.includes("=== Phase 4: Chunk Processing ===")) {
+          this.emit("progress", {
+            progress: 35,
+            step: "Processing video chunks...",
+            phase: "processing",
+            details: { message: "Batch processing audio and frames" },
+          });
+        } else if (output.includes("=== Phase 5: Audio Finalization ===")) {
+          this.emit("progress", {
+            progress: 75,
+            step: "Finalizing audio track...",
+            phase: "audio_finalization",
+            details: { message: "Combining processed audio segments" },
+          });
+        } else if (output.includes("=== Phase 6: Video Encoding ===")) {
+          this.emit("progress", {
+            progress: 80,
+            step: "Encoding final video...",
+            phase: "encoding",
+            details: { message: "Hardware-accelerated video encoding" },
           });
         }
 
-        // Look for "X time-altered frames saved." messages from Python script
-        const progressMatch = output.match(/(\d+) time-altered frames saved\./);
+        // Detect frame rate detection
+        if (output.includes("Detected frame rate:")) {
+          const rateMatch = output.match(/Detected frame rate: ([\d.]+) fps/);
+          this.emit("progress", {
+            progress: 25,
+            step: "Video metadata analyzed",
+            phase: "analysis",
+            details: {
+              message: output.trim(),
+              frameRate: rateMatch ? parseFloat(rateMatch[1]) : null
+            },
+          });
+        }
+
+        // System performance monitoring
+        if (output.includes("System:")) {
+          const sysMatch = output.match(/System: (\d+) CPUs, ([\d.]+)GB RAM/);
+          if (sysMatch) {
+            this.emit("progress", {
+              progress: 10,
+              step: "System resources detected",
+              phase: "initialization",
+              details: {
+                cpus: parseInt(sysMatch[1]),
+                ramGB: parseFloat(sysMatch[2]),
+                message: "Optimizing for system capabilities"
+              },
+            });
+          }
+        }
+
+        // Progress tracking from optimized script
+        const progressMatch = output.match(/Progress: (\d+)\/(\d+) chunks \(([\d.]+)%\)/);
         if (progressMatch) {
-          const frames = parseInt(progressMatch[1]);
-          // Better progress estimation - map frame processing to 30-70% range
+          const current = parseInt(progressMatch[1]);
+          const total = parseInt(progressMatch[2]);
+          const percent = parseFloat(progressMatch[3]);
+
+          // Map chunk progress to 35-75% range
+          const mappedProgress = Math.min(75, 35 + (percent * 0.4));
+
+          if (mappedProgress > lastProgress) {
+            lastProgress = mappedProgress;
+            this.emit("progress", {
+              progress: mappedProgress,
+              step: `Processing chunks: ${current}/${total} completed`,
+              phase: "processing",
+              details: {
+                chunksProcessed: current,
+                totalChunks: total,
+                chunkProgress: percent,
+                estimatedCompletion: `${Math.round(percent)}% of processing phase`,
+              },
+            });
+          }
+        }
+
+        // Frame processing from optimized script
+        const frameMatch = output.match(/(\d+) frames processed in batch/);
+        if (frameMatch) {
+          const frames = parseInt(frameMatch[1]);
+          this.emit("progress", {
+            progress: null, // Don't update main progress
+            step: `Batch processed: ${frames.toLocaleString()} frames`,
+            phase: "processing",
+            details: {
+              framesProcessed: frames,
+              message: "Optimized batch frame processing"
+            },
+          });
+        }
+
+        // Hardware encoder detection
+        if (output.includes("Using hardware encoder:")) {
+          const encoderMatch = output.match(/Using hardware encoder: ([\w_]+)/);
+          this.emit("progress", {
+            progress: null,
+            step: "Hardware acceleration enabled",
+            phase: "setup",
+            details: {
+              encoder: encoderMatch ? encoderMatch[1] : "unknown",
+              message: "Hardware-accelerated encoding available"
+            },
+          });
+        } else if (output.includes("Using CPU encoding")) {
+          this.emit("progress", {
+            progress: null,
+            step: "CPU encoding mode",
+            phase: "setup",
+            details: {
+              encoder: "libx264",
+              message: "No hardware acceleration available"
+            },
+          });
+        }
+
+        // Legacy support for old script output
+        const legacyProgressMatch = output.match(/(\d+) time-altered frames saved\./);
+        if (legacyProgressMatch) {
+          const frames = parseInt(legacyProgressMatch[1]);
           const progress = Math.min(70, 30 + Math.floor(frames / 50) * 2);
           if (progress > lastProgress) {
             lastProgress = progress;
@@ -577,23 +735,26 @@ else:
         this.emit("stderr", error);
       });
 
-      // Add timeout for the process (5 minutes)
-      const timeout = setTimeout(
-        () => {
-          if (this.currentProcess) {
-            console.log("[JUMPCUTTER] Process timeout - killing process");
-            this.currentProcess.kill("SIGTERM");
-            this.currentProcess = null;
-            reject({
-              success: false,
-              error: "Process timed out after 5 minutes",
-              stdout,
-              stderr,
-            });
-          }
-        },
-        5 * 60 * 1000,
-      ); // 5 minutes
+      // Add timeout to prevent processes from running indefinitely
+      const timeout = setTimeout(() => {
+        if (this.currentProcess) {
+          console.log(`[JUMPCUTTER] Process timeout after ${timeoutMinutes} minutes - killing process`);
+          this.currentProcess.kill("SIGTERM");
+          setTimeout(() => {
+            if (this.currentProcess) {
+              console.log("[JUMPCUTTER] Force killing process after timeout");
+              this.currentProcess.kill("SIGKILL");
+              this.currentProcess = null;
+            }
+          }, 5000);
+          reject({
+            success: false,
+            error: `Jumpcutter process timed out after ${timeoutMinutes} minutes`,
+            stdout,
+            stderr,
+          });
+        }
+      }, timeoutMinutes * 60 * 1000);
 
       this.currentProcess.on("close", async (code, signal) => {
         clearTimeout(timeout);
@@ -655,6 +816,7 @@ else:
       });
 
       this.currentProcess.on("error", (error) => {
+        clearTimeout(timeout);
         this.currentProcess = null;
         reject({
           success: false,
@@ -668,8 +830,26 @@ else:
 
   cancelProcessing() {
     if (this.currentProcess) {
+      console.log("Cancelling jumpcutter process...");
+
+      // First try SIGTERM (graceful shutdown)
       this.currentProcess.kill("SIGTERM");
-      this.currentProcess = null;
+
+      // If process doesn't exit within 5 seconds, force kill
+      const forceKillTimeout = setTimeout(() => {
+        if (this.currentProcess) {
+          console.log("Force killing jumpcutter process...");
+          this.currentProcess.kill("SIGKILL");
+          this.currentProcess = null;
+        }
+      }, 5000);
+
+      // Clear timeout if process exits gracefully
+      this.currentProcess.on("exit", () => {
+        clearTimeout(forceKillTimeout);
+        this.currentProcess = null;
+      });
+
       this.emit("cancelled");
       return true;
     }

@@ -116,7 +116,8 @@ class ContentAnalyzer:
         if clip_settings.get('include_insights'):
             content_preferences.append("valuable insights")
 
-        preferences_text = ", ".join(content_preferences) if content_preferences else "engaging content"
+        preferences_text = ", ".join(
+            content_preferences) if content_preferences else "engaging content"
 
         system_message = """You are an expert video content analyzer specializing in identifying engaging moments for short-form content.
         You will analyze timestamped video transcripts and extract the most compelling clips that would work well for social media, marketing, or content creation."""
@@ -216,7 +217,8 @@ class ContentAnalyzer:
         total_duration = segments[-1]['end'] if segments else 0
 
         # Get GPT analysis with clip recommendations
-        gpt_analysis = self.analyze_transcript_with_gpt(transcript_data, clip_settings)
+        gpt_analysis = self.analyze_transcript_with_gpt(
+            transcript_data, clip_settings)
 
         return {
             'timestamp': transcript_data.get('timestamp'),

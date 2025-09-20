@@ -144,6 +144,7 @@ class PythonBridge extends EventEmitter {
       includeActionableContent = true,
       includeEmotionalPeaks = true,
       includeInsights = true,
+      timeoutMinutes = 30, // Default 30 minute timeout
     } = options;
 
     return new Promise((resolve, reject) => {
@@ -288,7 +289,29 @@ class PythonBridge extends EventEmitter {
         }
       });
 
+      // Add timeout to prevent processes from running indefinitely
+      const timeout = setTimeout(() => {
+        if (this.currentProcess) {
+          console.log(`[AI PIPELINE] Process timeout after ${timeoutMinutes} minutes - killing process`);
+          this.currentProcess.kill("SIGTERM");
+          setTimeout(() => {
+            if (this.currentProcess) {
+              console.log("[AI PIPELINE] Force killing process after timeout");
+              this.currentProcess.kill("SIGKILL");
+              this.currentProcess = null;
+            }
+          }, 5000);
+          reject({
+            success: false,
+            error: `Process timed out after ${timeoutMinutes} minutes`,
+            stdout,
+            stderr,
+          });
+        }
+      }, timeoutMinutes * 60 * 1000);
+
       this.currentProcess.on("close", async (code) => {
+        clearTimeout(timeout);
         this.currentProcess = null;
 
         console.log(`Python process closed with code: ${code}`);
@@ -329,6 +352,7 @@ class PythonBridge extends EventEmitter {
       });
 
       this.currentProcess.on("error", (error) => {
+        clearTimeout(timeout);
         this.currentProcess = null;
 
         let errorMessage = `Failed to start Python process: ${error.message}`;
@@ -361,8 +385,25 @@ class PythonBridge extends EventEmitter {
 
   cancelProcessing() {
     if (this.currentProcess) {
+      console.log("Cancelling Python AI pipeline process...");
+
+      // First try SIGTERM (graceful shutdown)
       this.currentProcess.kill("SIGTERM");
-      this.currentProcess = null;
+
+      // If process doesn't exit within 5 seconds, force kill
+      const forceKillTimeout = setTimeout(() => {
+        if (this.currentProcess) {
+          console.log("Force killing Python AI pipeline process...");
+          this.currentProcess.kill("SIGKILL");
+          this.currentProcess = null;
+        }
+      }, 5000);
+
+      // Clear timeout if process exits gracefully
+      this.currentProcess.on("exit", () => {
+        clearTimeout(forceKillTimeout);
+        this.currentProcess = null;
+      });
 
       // Reset timing information
       this.processingStartTime = null;

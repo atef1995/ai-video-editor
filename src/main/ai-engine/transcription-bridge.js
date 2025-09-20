@@ -308,6 +308,7 @@ else:
       addTextOverlay = false,
       textStyle = {},
       subtitlePositions = null,
+      timeoutMinutes = 15, // Default 15 minute timeout for transcription
     } = options;
 
     // Normalize text style properties for Python compatibility
@@ -458,23 +459,29 @@ else:
         this.emit("stderr", error);
       });
 
-      // Add timeout for the process (10 minutes for large files)
+      // Add timeout for the process (configurable, default 15 minutes)
       const timeout = setTimeout(
         () => {
           if (this.currentProcess) {
-            console.log("[TRANSCRIPTION] Process timeout - killing process");
+            console.log(`[TRANSCRIPTION] Process timeout after ${timeoutMinutes} minutes - killing process`);
             this.currentProcess.kill("SIGTERM");
-            this.currentProcess = null;
+            setTimeout(() => {
+              if (this.currentProcess) {
+                console.log("[TRANSCRIPTION] Force killing process after timeout");
+                this.currentProcess.kill("SIGKILL");
+                this.currentProcess = null;
+              }
+            }, 5000);
             reject({
               success: false,
-              error: "Transcription timed out after 10 minutes",
+              error: `Transcription timed out after ${timeoutMinutes} minutes`,
               stdout,
               stderr,
             });
           }
         },
-        10 * 60 * 1000,
-      ); // 10 minutes
+        timeoutMinutes * 60 * 1000,
+      );
 
       this.currentProcess.on("close", async (code, signal) => {
         clearTimeout(timeout);
@@ -716,8 +723,26 @@ else:
    */
   cancelTranscription() {
     if (this.currentProcess) {
+      console.log("Cancelling transcription process...");
+
+      // First try SIGTERM (graceful shutdown)
       this.currentProcess.kill("SIGTERM");
-      this.currentProcess = null;
+
+      // If process doesn't exit within 5 seconds, force kill
+      const forceKillTimeout = setTimeout(() => {
+        if (this.currentProcess) {
+          console.log("Force killing transcription process...");
+          this.currentProcess.kill("SIGKILL");
+          this.currentProcess = null;
+        }
+      }, 5000);
+
+      // Clear timeout if process exits gracefully
+      this.currentProcess.on("exit", () => {
+        clearTimeout(forceKillTimeout);
+        this.currentProcess = null;
+      });
+
       this.emit("cancelled");
       return true;
     }

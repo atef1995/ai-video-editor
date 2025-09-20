@@ -13,6 +13,44 @@ import argparse
 from pytube import YouTube
 
 
+def detectHardwareEncoder(fast_mode=False):
+    """Detect available hardware encoders for faster encoding"""
+    # Test for available hardware encoders
+    if fast_mode:
+        # Ultra-fast settings for speed over quality
+        encoders_to_test = [
+            ('h264_nvenc', '-c:v h264_nvenc -preset p1 -cq 30 -b:v 2M'),  # NVIDIA GPU
+            ('h264_qsv', '-c:v h264_qsv -preset veryfast -global_quality 30'),  # Intel QuickSync
+            ('h264_amf', '-c:v h264_amf -quality speed -rc cbr -b:v 2M'),  # AMD GPU
+            ('libx264', '-c:v libx264 -preset ultrafast -crf 30')  # CPU fallback
+        ]
+    else:
+        # Balanced settings
+        encoders_to_test = [
+            ('h264_nvenc', '-c:v h264_nvenc -preset p1 -cq 23'),  # NVIDIA GPU
+            ('h264_qsv', '-c:v h264_qsv -preset veryfast -global_quality 23'),  # Intel QuickSync
+            ('h264_amf', '-c:v h264_amf -quality speed -rc cqp -qp_i 23 -qp_p 23'),  # AMD GPU
+            ('libx264', '-c:v libx264 -preset ultrafast -crf 23')  # CPU fallback
+        ]
+
+    for encoder_name, encoder_args in encoders_to_test:
+        try:
+            # Test if encoder is available (Windows-compatible null redirect)
+            null_redirect = "2>nul" if os.name == 'nt' else "2>/dev/null"
+            test_cmd = f"ffmpeg -f lavfi -i testsrc=duration=1:size=320x240:rate=1 -t 1 {encoder_args} -f null - {null_redirect}"
+            result = subprocess.run(test_cmd, shell=True, capture_output=True, timeout=10)
+            if result.returncode == 0:
+                print(f"Using hardware encoder: {encoder_name}")
+                return encoder_args
+        except Exception as e:
+            print(f"Encoder {encoder_name} test failed: {e}")
+            continue
+
+    # Fallback to CPU encoding
+    print("Using CPU encoding (no hardware acceleration available)")
+    return '-c:v libx264 -preset ultrafast -crf 23'
+
+
 def downloadFile(url):
     name = YouTube(url).streams.first().download()
     newname = name.replace(' ', '_')
@@ -35,6 +73,36 @@ def copyFrame(inputFrame, outputFrame):
     if outputFrame % 20 == 19:
         print(str(outputFrame+1)+" time-altered frames saved.")
     return True
+
+def copyFramesBatch(frame_mappings):
+    """Copy multiple frames in batch for better performance"""
+    global lastExistingFrame
+    successful_copies = 0
+
+    # Pre-check which source frames exist to avoid repeated os.path.isfile calls
+    existing_frames = set()
+    for inputFrame, _ in frame_mappings:
+        src = TEMP_FOLDER+"/frame{:06d}".format(inputFrame+1)+".jpg"
+        if os.path.isfile(src):
+            existing_frames.add(inputFrame)
+
+    for inputFrame, outputFrame in frame_mappings:
+        # Use the original input frame if it exists, otherwise use the last existing frame
+        frame_to_copy = inputFrame if inputFrame in existing_frames else lastExistingFrame
+
+        if frame_to_copy is not None:
+            src = TEMP_FOLDER+"/frame{:06d}".format(frame_to_copy+1)+".jpg"
+            dst = TEMP_FOLDER+"/newFrame{:06d}".format(outputFrame+1)+".jpg"
+            if frame_to_copy in existing_frames or os.path.isfile(src):
+                copyfile(src, dst)
+                successful_copies += 1
+                # Update lastExistingFrame if we used the original inputFrame
+                if inputFrame in existing_frames:
+                    lastExistingFrame = inputFrame
+
+    if successful_copies > 0:
+        print(f"{successful_copies} time-altered frames saved.")
+    return successful_copies
 
 
 def inputToOutputFilename(filename):
@@ -83,6 +151,8 @@ parser.add_argument('--frame_rate', type=float, default=30,
                     help="frame rate of the input and output videos. optional... I try to find it out myself, but it doesn't always work.")
 parser.add_argument('--frame_quality', type=int, default=3,
                     help="quality of frames to be extracted from input video. 1 is highest, 31 is lowest, 3 is the default.")
+parser.add_argument('--fast_mode', action='store_true',
+                    help="enable fast processing mode (lower quality but much faster)")
 
 args = parser.parse_args()
 
@@ -98,6 +168,10 @@ else:
     INPUT_FILE = args.input_file
 URL = args.url
 FRAME_QUALITY = args.frame_quality
+# Adjust quality for fast mode
+if args.fast_mode and FRAME_QUALITY < 8:
+    FRAME_QUALITY = 8
+    print(f"Fast mode enabled: adjusting frame quality to {FRAME_QUALITY} for speed")
 
 assert INPUT_FILE != None, "why u put no input file, that dum"
 
@@ -112,14 +186,15 @@ AUDIO_FADE_ENVELOPE_SIZE = 400
 
 createPath(TEMP_FOLDER)
 
-command = "ffmpeg -y -i \""+INPUT_FILE+"\" -qscale:v " + \
-    str(FRAME_QUALITY)+" "+TEMP_FOLDER+"/frame%06d.jpg -hide_banner"
-subprocess.call(command, shell=True)
+# Optimized frame extraction with hardware acceleration if available
+frame_extract_cmd = f"ffmpeg -y -i \"{INPUT_FILE}\" -qscale:v {FRAME_QUALITY} -threads 0 {TEMP_FOLDER}/frame%06d.jpg -hide_banner"
+print(f"Frame extraction command: {frame_extract_cmd}")
+subprocess.call(frame_extract_cmd, shell=True)
 
-command = "ffmpeg -y -i \""+INPUT_FILE+"\" -ab 160k -ac 2 -ar " + \
-    str(SAMPLE_RATE)+" -vn "+TEMP_FOLDER+"/audio.wav"
-
-subprocess.call(command, shell=True)
+# Optimized audio extraction
+audio_extract_cmd = f"ffmpeg -y -i \"{INPUT_FILE}\" -ab 160k -ac 2 -ar {SAMPLE_RATE} -vn -threads 0 {TEMP_FOLDER}/audio.wav"
+print(f"Audio extraction command: {audio_extract_cmd}")
+subprocess.call(audio_extract_cmd, shell=True)
 
 command = "ffmpeg -i \""+INPUT_FILE+"\" 2>&1"
 f = open(TEMP_FOLDER+"/params.txt", "w")
@@ -183,7 +258,14 @@ outputAudioData = np.zeros((0, audioData.shape[1]), dtype=np.float64)
 outputPointer = 0
 
 lastExistingFrame = None
-for chunk in chunks:
+frame_mappings_batch = []
+BATCH_SIZE = 500  # Process frames in larger batches for better performance
+total_chunks = len(chunks)
+processed_chunks = 0
+
+print(f"Processing {total_chunks} audio chunks...")
+
+for chunk_idx, chunk in enumerate(chunks):
     audioChunk = audioData[int(chunk[0]*samplesPerFrame):int(chunk[1]*samplesPerFrame)]
 
     sFile = TEMP_FOLDER+"/tempStart.wav"
@@ -222,6 +304,7 @@ for chunk in chunks:
     originalChunkFrames = chunk[1] - chunk[0]
     outputChunkFrames = endOutputFrame - startOutputFrame
 
+    # Build frame mappings for batch processing
     for outputFrame in range(startOutputFrame, endOutputFrame):
         # Map output frame to input frame based on the actual audio processing result
         if outputChunkFrames > 0:
@@ -230,13 +313,25 @@ for chunk in chunks:
         else:
             inputFrame = int(chunk[0])
 
-        didItWork = copyFrame(inputFrame, outputFrame)
-        if didItWork:
-            lastExistingFrame = inputFrame
-        else:
-            copyFrame(lastExistingFrame, outputFrame)
+        # Defer file existence check to batch processing for better performance
+        frame_mappings_batch.append((inputFrame, outputFrame))
+
+        # Process batch when it reaches BATCH_SIZE
+        if len(frame_mappings_batch) >= BATCH_SIZE:
+            copyFramesBatch(frame_mappings_batch)
+            frame_mappings_batch = []
 
     outputPointer = endPointer
+
+    # Report chunk progress
+    processed_chunks += 1
+    if processed_chunks % 10 == 0 or processed_chunks == total_chunks:
+        progress_percent = (processed_chunks / total_chunks) * 100
+        print(f"Processed {processed_chunks}/{total_chunks} chunks ({progress_percent:.1f}%)")
+
+# Process any remaining frames in the batch
+if frame_mappings_batch:
+    copyFramesBatch(frame_mappings_batch)
 
 wavfile.write(TEMP_FOLDER+"/audioNew.wav", int(SAMPLE_RATE),
               (outputAudioData*maxAudioVolume).astype(np.int16))
@@ -247,8 +342,13 @@ for endGap in range(outputFrame,audioFrameCount):
     copyFrame(int(audioSampleCount/samplesPerFrame)-1,endGap)
 '''
 
-command = "ffmpeg -y -framerate "+str(frameRate)+" -i "+TEMP_FOLDER+"/newFrame%06d.jpg -i "+TEMP_FOLDER + \
-    "/audioNew.wav -c:v libx264 -c:a aac -b:a 128k -pix_fmt yuv420p -shortest \""+OUTPUT_FILE+"\""
+# Detect best available encoder (use fast mode if specified)
+encoder_args = detectHardwareEncoder(args.fast_mode)
+
+# Build optimized ffmpeg command
+command = f"ffmpeg -y -framerate {frameRate} -i {TEMP_FOLDER}/newFrame%06d.jpg -i {TEMP_FOLDER}/audioNew.wav {encoder_args} -c:a aac -b:a 128k -pix_fmt yuv420p -movflags +faststart -shortest \"{OUTPUT_FILE}\""
+
+print(f"Final encoding command: {command}")
 subprocess.call(command, shell=True)
 
 deletePath(TEMP_FOLDER)

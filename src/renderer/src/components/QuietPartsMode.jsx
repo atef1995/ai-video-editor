@@ -13,6 +13,8 @@ export const QuietPartsMode = () => {
   const [processingDetails, setProcessingDetails] = useState({});
   const [processedVideo, setProcessedVideo] = useState(null);
   const [error, setError] = useState(null);
+  const [startTime, setStartTime] = useState(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
   const [settings, setSettings] = useState({
     silentThreshold: 0.03,
     soundedSpeed: 1.0,
@@ -39,6 +41,8 @@ export const QuietPartsMode = () => {
     const errorUnsubscribe = window.electronAPI.onJumpcutterError((event, errorData) => {
       setError(errorData.error || errorData.message);
       setIsProcessing(false);
+      setStartTime(null);
+      setElapsedTime(0);
     });
 
     const completeUnsubscribe = window.electronAPI.onJumpcutterComplete((event, result) => {
@@ -56,6 +60,26 @@ export const QuietPartsMode = () => {
     };
   }, []);
 
+  // Track elapsed time during processing
+  useEffect(() => {
+    let intervalId;
+
+    if (isProcessing && startTime) {
+      intervalId = setInterval(() => {
+        setElapsedTime(Date.now() - startTime);
+      }, 1000); // Update every second
+    } else if (!isProcessing) {
+      setElapsedTime(0);
+      setStartTime(null);
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [isProcessing, startTime]);
+
   const handleVideoSelectLocal = (videoPath) => {
     handleVideoSelect(videoPath);
     setProcessedVideo(null);
@@ -65,6 +89,8 @@ export const QuietPartsMode = () => {
   const handleProcessStart = async () => {
     if (!selectedVideo) return;
 
+    const now = Date.now();
+    setStartTime(now);
     setIsProcessing(true);
     setProcessingProgress(0);
     setProcessingStep('Starting quiet parts removal...');
@@ -91,6 +117,8 @@ export const QuietPartsMode = () => {
       await window.electronAPI.cancelJumpcutterProcessing();
       setIsProcessing(false);
       setProcessingStep('Processing cancelled');
+      setStartTime(null);
+      setElapsedTime(0);
     } catch (error) {
       console.error('Failed to cancel processing:', error);
     }
@@ -255,12 +283,13 @@ export const QuietPartsMode = () => {
                   Cancel
                 </button>
               </div>
-              <ProcessingStatus 
-                progress={processingProgress} 
+              <ProcessingStatus
+                progress={processingProgress}
                 currentStep={processingStep}
                 phase={processingPhase}
                 details={processingDetails}
                 steps={[]}
+                totalElapsedTime={elapsedTime}
               />
             </div>
           )}

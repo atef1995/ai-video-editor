@@ -98,8 +98,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // External links
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  openVideoFile: (videoPath) => ipcRenderer.invoke('open-video-file', videoPath),
 
   // Debug helpers
   getLogFilePath: () => ipcRenderer.invoke('get-log-file-path'),
-  openLogFile: () => ipcRenderer.invoke('open-log-file')
+  openLogFile: () => ipcRenderer.invoke('open-log-file'),
+
+  // Process management
+  killAllProcesses: () => ipcRenderer.invoke('kill-all-processes'),
+  getActiveProcesses: () => ipcRenderer.invoke('get-active-processes')
 });

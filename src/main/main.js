@@ -66,6 +66,36 @@ const { Database } = require("./database/database");
 
 let mainWindow;
 
+// Process management
+const activeProcesses = new Set();
+
+function registerProcess(bridge, processName) {
+  activeProcesses.add({ bridge, processName });
+}
+
+function unregisterProcess(bridge) {
+  activeProcesses.forEach((item) => {
+    if (item.bridge === bridge) {
+      activeProcesses.delete(item);
+    }
+  });
+}
+
+function killAllProcesses() {
+  console.log('Killing all active processes...');
+  activeProcesses.forEach((item) => {
+    try {
+      if (item.bridge && typeof item.bridge.cancelProcessing === 'function') {
+        console.log(`Killing ${item.processName} process`);
+        item.bridge.cancelProcessing();
+      }
+    } catch (error) {
+      console.error(`Error killing ${item.processName} process:`, error);
+    }
+  });
+  activeProcesses.clear();
+}
+
 // Register protocol schemes before app is ready
 protocol.registerSchemesAsPrivileged([
   {
@@ -118,6 +148,12 @@ function createWindow() {
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+
+  // Cleanup processes when window is about to close
+  mainWindow.on("close", (event) => {
+    console.log('Window closing, cleaning up processes...');
+    killAllProcesses();
+  });
 }
 
 app.whenReady().then(async () => {
@@ -168,9 +204,16 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
+  console.log('All windows closed, killing processes...');
+  killAllProcesses();
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+app.on("before-quit", () => {
+  console.log('App before quit, killing processes...');
+  killAllProcesses();
 });
 
 app.on("activate", () => {
@@ -315,6 +358,9 @@ ipcMain.handle("get-video-info", async (event, videoPath) => {
 
 ipcMain.handle("process-video", async (event, videoPath, options = {}) => {
   try {
+    // Register the process
+    registerProcess(pythonBridge, 'AI Pipeline');
+
     // Set up progress forwarding
     pythonBridge.on("progress", (progressData) => {
       mainWindow.webContents.send("processing-progress", progressData);
@@ -326,6 +372,9 @@ ipcMain.handle("process-video", async (event, videoPath, options = {}) => {
 
     const result = await pythonBridge.processVideo(videoPath, options);
 
+    // Unregister when complete
+    unregisterProcess(pythonBridge);
+
     if (result.success) {
       mainWindow.webContents.send("processing-complete", result);
     }
@@ -333,6 +382,8 @@ ipcMain.handle("process-video", async (event, videoPath, options = {}) => {
     return result;
   } catch (error) {
     console.error("Process video error:", error);
+    // Make sure to unregister on error
+    unregisterProcess(pythonBridge);
     const errorResult = {
       success: false,
       error: error.message,
@@ -345,6 +396,7 @@ ipcMain.handle("process-video", async (event, videoPath, options = {}) => {
 });
 
 ipcMain.handle("cancel-processing", () => {
+  unregisterProcess(pythonBridge);
   return pythonBridge.cancelProcessing();
 });
 
@@ -362,6 +414,9 @@ ipcMain.handle(
   "process-quiet-parts",
   async (event, videoPath, options = {}) => {
     try {
+      // Register the process
+      registerProcess(jumpcutterBridge, 'Jumpcutter');
+
       // Set up progress forwarding for jumpcutter
       jumpcutterBridge.on("progress", (progressData) => {
         mainWindow.webContents.send("jumpcutter-progress", progressData);
@@ -373,12 +428,17 @@ ipcMain.handle(
 
       const result = await jumpcutterBridge.processVideo(videoPath, options);
 
+      // Unregister when complete
+      unregisterProcess(jumpcutterBridge);
+
       if (result.success) {
         mainWindow.webContents.send("jumpcutter-complete", result);
       }
 
       return result;
     } catch (error) {
+      // Make sure to unregister on error
+      unregisterProcess(jumpcutterBridge);
       const errorResult = { success: false, error: error.message };
       mainWindow.webContents.send("jumpcutter-error", errorResult);
       return errorResult;
@@ -387,6 +447,7 @@ ipcMain.handle(
 );
 
 ipcMain.handle("cancel-jumpcutter-processing", () => {
+  unregisterProcess(jumpcutterBridge);
   return jumpcutterBridge.cancelProcessing();
 });
 
@@ -410,15 +471,39 @@ ipcMain.handle("check-transcription-dependencies", async () => {
 
 ipcMain.handle("transcribe-video", async (event, videoPath, options = {}) => {
   try {
+    // Register the process
+    registerProcess(transcriptionBridge, 'Transcription');
     const result = await transcriptionBridge.transcribeFile(videoPath, options);
+    // Unregister when complete
+    unregisterProcess(transcriptionBridge);
     return result;
   } catch (error) {
+    // Make sure to unregister on error
+    unregisterProcess(transcriptionBridge);
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle("cancel-transcription", () => {
+  unregisterProcess(transcriptionBridge);
   return transcriptionBridge.cancelTranscription();
+});
+
+// Kill all active processes handler
+ipcMain.handle("kill-all-processes", () => {
+  try {
+    killAllProcesses();
+    return { success: true, message: "All processes killed successfully" };
+  } catch (error) {
+    console.error("Error killing all processes:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get active processes count
+ipcMain.handle("get-active-processes", () => {
+  const processes = Array.from(activeProcesses).map(item => item.processName);
+  return { success: true, count: activeProcesses.size, processes };
 });
 
 ipcMain.handle("get-available-models", () => {
@@ -708,6 +793,20 @@ ipcMain.handle("open-external", async (event, url) => {
     return { success: true };
   } catch (error) {
     console.error("Failed to open external URL:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Open video file in default player
+ipcMain.handle("open-video-file", async (event, videoPath) => {
+  try {
+    if (!fs.existsSync(videoPath)) {
+      return { success: false, error: "Video file not found" };
+    }
+    await shell.openPath(videoPath);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to open video file:", error);
     return { success: false, error: error.message };
   }
 });

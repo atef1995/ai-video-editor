@@ -113,3 +113,8 @@ release/
 nul
 python-dist/
 .claude
+test_results
+
+src/python/cut-quiet-parts/jumpcutter_optimized.py
+docs/JUMPCUTTER_PERFORMANCE_ANALYSIS.md
+src/python/test

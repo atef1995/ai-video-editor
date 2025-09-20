@@ -15,6 +15,30 @@ export const GeneratedClips = ({ clips = [] }) => {
     return 'text-red-400';
   };
 
+  const handlePreview = async (clip) => {
+    if (clip.file_path) {
+      try {
+        await window.electronAPI.openVideoFile(clip.file_path);
+      } catch (error) {
+        console.error('Failed to open video file:', error);
+      }
+    } else {
+      console.error('No file path available for clip');
+    }
+  };
+
+  const handleShowInFolderSingle = async (clip) => {
+    if (clip.file_path) {
+      try {
+        await window.electronAPI.showFileInFolder(clip.file_path);
+      } catch (error) {
+        console.error('Failed to show file in folder:', error);
+      }
+    } else {
+      console.error('No file path available for clip');
+    }
+  };
+
   const handleExport = (clip) => {
     console.log('Exporting clip:', clip);
   };
@@ -115,25 +139,31 @@ export const GeneratedClips = ({ clips = [] }) => {
                     </div>
                   </div>
 
-                  <div className="flex space-x-3 pt-4">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // Preview functionality
-                      }}
-                      className="flex-1 bg-gray-600 hover:bg-gray-500 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
-                    >
-                      Preview
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleExport(clip);
-                      }}
-                      className="flex-1 bg-primary-600 hover:bg-primary-700 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
-                    >
-                      Export
-                    </button>
+                  <div className="space-y-3 pt-4">
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePreview(clip);
+                        }}
+                        className="flex-1 bg-primary-600 hover:bg-primary-700 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        Open Video
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleShowInFolderSingle(clip);
+                        }}
+                        className="flex-1 bg-gray-600 hover:bg-gray-500 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center"
+                        title="Show in folder"
+                      >
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-5l-2-2H5a2 2 0 00-2 2z" />
+                        </svg>
+                        Show
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
