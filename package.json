@@ -69,7 +69,16 @@
     ],
     "extraResources": [
       "src/python/**/*",
-      "python-dist/**/*"
+      {
+        "from": "python-dist/ai_pipeline",
+        "to": "python/ai_pipeline",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "python-dist/jumpcutter",
+        "to": "python/jumpcutter",
+        "filter": ["**/*"]
+      }
     ],
     "asarUnpack": [
       "node_modules/sqlite3/**/*"
