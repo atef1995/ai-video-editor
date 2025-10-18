@@ -58,6 +58,41 @@ async function buildPythonExecutables() {
         'IPython', 'notebook', 'tkinter', 'PyQt5', 'PyQt6', 'PySide2', 'PySide6'
       ];
 
+      // Hidden imports required for proper bundling of all dependencies
+      const hiddenImports = [
+        // Audio processing dependencies
+        'audiotsm',
+        'audiotsm.io',
+        'audiotsm.io.wav',
+        'audiotsm.phasevocoder',
+        'audiotsm.wsola',
+        // Whisper and its dependencies (for ai_pipeline)
+        'whisper',
+        'tiktoken_ext.openai_public',
+        'tiktoken_ext',
+        // NumPy submodules often missed by PyInstaller
+        'numpy.core._methods',
+        'numpy.lib.format',
+        // SciPy submodules
+        'scipy.io.wavfile',
+        'scipy.io',
+        'scipy.signal',
+        'scipy.fft',
+        'scipy.fftpack',
+        // PIL/Pillow submodules
+        'PIL',
+        'PIL.Image',
+        'PIL.ImageDraw',
+        'PIL.ImageFont',
+        // Other dependencies
+        'pkg_resources.py2_warn'
+      ];
+
+      // Collect all data files for whisper (models, tokenizer data)
+      const collectPackages = script.name === 'ai_pipeline'
+        ? ['whisper', 'tiktoken_ext']
+        : [];
+
       const pyinstallerCmd = [
         `python "${path.join(__dirname, 'run_pyinstaller.py')}"`,
         '--onefile',  // Create single executable
@@ -67,6 +102,8 @@ async function buildPythonExecutables() {
         '--workpath', path.join(buildDir, 'temp', script.name),
         '--specpath', path.join(buildDir, 'specs'),
         '--clean',
+        ...hiddenImports.map(imp => `--hidden-import ${imp}`),
+        ...collectPackages.map(pkg => `--collect-all ${pkg}`),
         ...excludes.map(exc => `--exclude-module ${exc}`),
         `"${script.entry}"`
       ].join(' ');

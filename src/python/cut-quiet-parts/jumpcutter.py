@@ -12,6 +12,10 @@ import os
 import argparse
 from pytube import YouTube
 
+# Use bundled FFmpeg if available, otherwise fall back to system FFmpeg
+FFMPEG_BINARY = os.environ.get('FFMPEG_BINARY', 'ffmpeg')
+print(f"Using FFmpeg: {FFMPEG_BINARY}")
+
 
 def detectHardwareEncoder(fast_mode=False):
     """Detect available hardware encoders for faster encoding"""
@@ -37,7 +41,7 @@ def detectHardwareEncoder(fast_mode=False):
         try:
             # Test if encoder is available (Windows-compatible null redirect)
             null_redirect = "2>nul" if os.name == 'nt' else "2>/dev/null"
-            test_cmd = f"ffmpeg -f lavfi -i testsrc=duration=1:size=320x240:rate=1 -t 1 {encoder_args} -f null - {null_redirect}"
+            test_cmd = f'"{FFMPEG_BINARY}" -f lavfi -i testsrc=duration=1:size=320x240:rate=1 -t 1 {encoder_args} -f null - {null_redirect}'
             result = subprocess.run(test_cmd, shell=True, capture_output=True, timeout=10)
             if result.returncode == 0:
                 print(f"Using hardware encoder: {encoder_name}")
@@ -187,16 +191,16 @@ AUDIO_FADE_ENVELOPE_SIZE = 400
 createPath(TEMP_FOLDER)
 
 # Optimized frame extraction with hardware acceleration if available
-frame_extract_cmd = f"ffmpeg -y -i \"{INPUT_FILE}\" -qscale:v {FRAME_QUALITY} -threads 0 {TEMP_FOLDER}/frame%06d.jpg -hide_banner"
+frame_extract_cmd = f'"{FFMPEG_BINARY}" -y -i "{INPUT_FILE}" -qscale:v {FRAME_QUALITY} -threads 0 {TEMP_FOLDER}/frame%06d.jpg -hide_banner'
 print(f"Frame extraction command: {frame_extract_cmd}")
 subprocess.call(frame_extract_cmd, shell=True)
 
 # Optimized audio extraction
-audio_extract_cmd = f"ffmpeg -y -i \"{INPUT_FILE}\" -ab 160k -ac 2 -ar {SAMPLE_RATE} -vn -threads 0 {TEMP_FOLDER}/audio.wav"
+audio_extract_cmd = f'"{FFMPEG_BINARY}" -y -i "{INPUT_FILE}" -ab 160k -ac 2 -ar {SAMPLE_RATE} -vn -threads 0 {TEMP_FOLDER}/audio.wav'
 print(f"Audio extraction command: {audio_extract_cmd}")
 subprocess.call(audio_extract_cmd, shell=True)
 
-command = "ffmpeg -i \""+INPUT_FILE+"\" 2>&1"
+command = f'"{FFMPEG_BINARY}" -i "{INPUT_FILE}" 2>&1'
 f = open(TEMP_FOLDER+"/params.txt", "w")
 subprocess.call(command, shell=True, stdout=f)
 f.close()
@@ -346,7 +350,7 @@ for endGap in range(outputFrame,audioFrameCount):
 encoder_args = detectHardwareEncoder(args.fast_mode)
 
 # Build optimized ffmpeg command
-command = f"ffmpeg -y -framerate {frameRate} -i {TEMP_FOLDER}/newFrame%06d.jpg -i {TEMP_FOLDER}/audioNew.wav {encoder_args} -c:a aac -b:a 128k -pix_fmt yuv420p -movflags +faststart -shortest \"{OUTPUT_FILE}\""
+command = f'"{FFMPEG_BINARY}" -y -framerate {frameRate} -i {TEMP_FOLDER}/newFrame%06d.jpg -i {TEMP_FOLDER}/audioNew.wav {encoder_args} -c:a aac -b:a 128k -pix_fmt yuv420p -movflags +faststart -shortest "{OUTPUT_FILE}"'
 
 print(f"Final encoding command: {command}")
 subprocess.call(command, shell=True)

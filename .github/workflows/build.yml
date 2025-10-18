@@ -14,7 +14,7 @@ jobs:
         os: [windows-latest, macos-latest, ubuntu-latest]
 
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
@@ -35,9 +35,15 @@ jobs:
       - name: Install Node.js dependencies
         run: npm ci
 
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r src/python/cut-quiet-parts/requirements.txt
+          pip install pyinstaller
+
       - name: Build Python executables
         run: npm run build:python
-        timeout-minutes: 25
+        timeout-minutes: 40
 
       - name: Build application
         run: npm run build
@@ -45,21 +51,21 @@ jobs:
       - name: Build distributables (Windows x64)
         run: npm run dist:quick -- --win
         if: matrix.os == 'windows-latest'
-        timeout-minutes: 15
+        timeout-minutes: 30
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build distributables (macOS)
         run: npm run dist:quick -- --mac
         if: matrix.os == 'macos-latest'
-        timeout-minutes: 15
+        timeout-minutes: 30
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build distributables (Linux)
         run: npm run dist:quick -- --linux
         if: matrix.os == 'ubuntu-latest'
-        timeout-minutes: 15
+        timeout-minutes: 30
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

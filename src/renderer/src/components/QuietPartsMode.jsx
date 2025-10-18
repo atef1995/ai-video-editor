@@ -3,6 +3,7 @@ import { VideoUpload } from './VideoUpload';
 import { VideoPreview } from './VideoPreview';
 import { ProcessingStatus } from './ProcessingStatus';
 import { useVideo } from '../contexts/VideoContext';
+import FFmpegInstallGuide from './FFmpegInstallGuide';
 
 export const QuietPartsMode = () => {
   const { selectedVideo, handleVideoSelect, hasVideo } = useVideo();
@@ -139,6 +140,11 @@ export const QuietPartsMode = () => {
         <p className="text-xl text-gray-300 max-w-2xl mx-auto">
           Automatically remove silent or quiet sections from your video to create more engaging content.
         </p>
+      </div>
+
+      {/* FFmpeg Status Check */}
+      <div className="max-w-4xl mx-auto">
+        <FFmpegInstallGuide />
       </div>
 
       {/* Main Content Grid */}

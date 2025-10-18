@@ -410,6 +410,15 @@ ipcMain.handle("check-jumpcutter-dependencies", async () => {
   }
 });
 
+ipcMain.handle("check-ffmpeg-availability", async () => {
+  try {
+    const result = await jumpcutterBridge.checkFFmpegAvailability();
+    return result;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle(
   "process-quiet-parts",
   async (event, videoPath, options = {}) => {

@@ -98,6 +98,7 @@ class JumpcutterBridge extends EventEmitter {
     return originalPath;
   }
 
+
   checkBundledExecutable() {
     try {
       const fs = require("fs");
@@ -427,6 +428,9 @@ else:
 
       console.log("Starting jumpcutter process:", { command, args });
 
+      // Use system FFmpeg from PATH
+      console.log("[JUMPCUTTER] Using system FFmpeg from PATH");
+
       this.currentProcess = spawn(command, args, {
         stdio: ["pipe", "pipe", "pipe"],
         env: { ...process.env },
@@ -723,13 +727,36 @@ else:
           });
         }
 
-        // Check for specific error types
-        if (error.includes("ModuleNotFoundError")) {
-          this.emit("error", { type: "missing_dependency", message: error });
+        // Check for specific error types and provide helpful messages
+        if (error.includes("ModuleNotFoundError") || error.includes("ImportError")) {
+          const moduleMatch = error.match(/No module named ['"]([\w.]+)['"]/);
+          const moduleName = moduleMatch ? moduleMatch[1] : "unknown";
+
+          const errorMessage = this.useBundled
+            ? `Bundled executable is missing required module: ${moduleName}. The application may need to be rebuilt with updated dependencies.`
+            : `Python dependency missing: ${moduleName}. Please run: pip install -r src/python/cut-quiet-parts/requirements.txt`;
+
+          this.emit("error", {
+            type: "missing_dependency",
+            message: errorMessage,
+            module: moduleName,
+            rawError: error
+          });
         } else if (error.includes("FileNotFoundError")) {
           this.emit("error", { type: "file_not_found", message: error });
         } else if (error.includes("ERROR") || error.includes("FAILED")) {
           this.emit("error", { type: "processing_error", message: error });
+        } else if (error.includes("ffmpeg") && (error.includes("not found") || error.includes("not recognized"))) {
+          const errorMessage = this.useBundled
+            ? "FFmpeg not found. The bundled ffmpeg executable may be missing or corrupted."
+            : "FFmpeg not found. Please install FFmpeg and ensure it is in your system PATH.";
+
+          this.emit("error", {
+            type: "missing_dependency",
+            message: errorMessage,
+            dependency: "ffmpeg",
+            rawError: error
+          });
         }
 
         this.emit("stderr", error);
@@ -806,9 +833,31 @@ else:
             });
           }
         } else {
+          // Extract meaningful error message from stderr
+          let errorMessage = `Jumpcutter process exited with code ${code}`;
+
+          if (stderr.includes("ModuleNotFoundError") || stderr.includes("ImportError")) {
+            const moduleMatch = stderr.match(/No module named ['"]([\w.]+)['"]/);
+            const moduleName = moduleMatch ? moduleMatch[1] : "unknown";
+            errorMessage = `Missing Python module: ${moduleName}. The bundled executable may need to be rebuilt with all dependencies.`;
+          } else if (stderr.includes("ffmpeg") && (stderr.includes("not found") || stderr.includes("not recognized"))) {
+            errorMessage = "FFmpeg not found. The system may be missing FFmpeg installation.";
+          } else if (stderr.includes("FileNotFoundError")) {
+            errorMessage = "File not found error during processing. Check input file path and permissions.";
+          } else if (stderr.length > 0) {
+            // Extract last meaningful error line
+            const errorLines = stderr.trim().split('\n').filter(line =>
+              line.includes('Error') || line.includes('error') || line.includes('FAILED')
+            );
+            if (errorLines.length > 0) {
+              errorMessage = errorLines[errorLines.length - 1];
+            }
+          }
+
           reject({
             success: false,
-            error: `Jumpcutter process exited with code ${code}`,
+            error: errorMessage,
+            exitCode: code,
             stdout,
             stderr,
           });
@@ -863,6 +912,60 @@ else:
       success: true,
       analysis: "Video ready for quiet parts removal processing",
     };
+  }
+
+  /**
+   * Checks if FFmpeg is available on the system
+   * @returns {Promise<Object>} Result with success status and FFmpeg availability
+   */
+  async checkFFmpegAvailability() {
+    return new Promise((resolve) => {
+      const { spawn } = require("child_process");
+      const process = spawn("ffmpeg", ["-version"]);
+
+      let hasOutput = false;
+
+      process.on("error", () => {
+        resolve({
+          success: true,
+          available: false,
+          type: "none",
+          message: "FFmpeg is not installed",
+          installInstructions: {
+            windows: "Download from https://www.gyan.dev/ffmpeg/builds/ and add to PATH",
+            darwin: "Install via Homebrew: brew install ffmpeg",
+            linux: "Install via package manager: sudo apt install ffmpeg (Ubuntu/Debian) or sudo yum install ffmpeg (RedHat/CentOS)",
+          },
+        });
+      });
+
+      process.stdout.on("data", () => {
+        hasOutput = true;
+      });
+
+      process.on("close", (code) => {
+        if (hasOutput || code === 0) {
+          resolve({
+            success: true,
+            available: true,
+            type: "system",
+            message: "FFmpeg is installed and available",
+          });
+        } else {
+          resolve({
+            success: true,
+            available: false,
+            type: "none",
+            message: "FFmpeg is not installed",
+            installInstructions: {
+              windows: "Download from https://www.gyan.dev/ffmpeg/builds/ and add to PATH",
+              darwin: "Install via Homebrew: brew install ffmpeg",
+              linux: "Install via package manager: sudo apt install ffmpeg (Ubuntu/Debian) or sudo yum install ffmpeg (RedHat/CentOS)",
+            },
+          });
+        }
+      });
+    });
   }
 }
 

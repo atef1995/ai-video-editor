@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Jumpcutter (quiet parts removal)
   checkJumpcutterDependencies: () => ipcRenderer.invoke('check-jumpcutter-dependencies'),
+  checkFFmpegAvailability: () => ipcRenderer.invoke('check-ffmpeg-availability'),
   processQuietParts: (videoPath, options) => ipcRenderer.invoke('process-quiet-parts', videoPath, options),
   cancelJumpcutterProcessing: () => ipcRenderer.invoke('cancel-jumpcutter-processing'),
   getQuietPartsAnalysis: (videoPath) => ipcRenderer.invoke('get-quiet-parts-analysis', videoPath),
