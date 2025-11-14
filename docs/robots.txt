@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://atef1995.github.io/ai-video-editor/sitemap.xml
