@@ -24,7 +24,8 @@ def detectHardwareEncoder(fast_mode=False):
         # Ultra-fast settings for speed over quality
         encoders_to_test = [
             ('h264_nvenc', '-c:v h264_nvenc -preset p1 -cq 30 -b:v 2M'),  # NVIDIA GPU
-            ('h264_qsv', '-c:v h264_qsv -preset veryfast -global_quality 30'),  # Intel QuickSync
+            # Intel QuickSync
+            ('h264_qsv', '-c:v h264_qsv -preset veryfast -global_quality 30'),
             ('h264_amf', '-c:v h264_amf -quality speed -rc cbr -b:v 2M'),  # AMD GPU
             ('libx264', '-c:v libx264 -preset ultrafast -crf 30')  # CPU fallback
         ]
@@ -32,8 +33,10 @@ def detectHardwareEncoder(fast_mode=False):
         # Balanced settings
         encoders_to_test = [
             ('h264_nvenc', '-c:v h264_nvenc -preset p1 -cq 23'),  # NVIDIA GPU
-            ('h264_qsv', '-c:v h264_qsv -preset veryfast -global_quality 23'),  # Intel QuickSync
-            ('h264_amf', '-c:v h264_amf -quality speed -rc cqp -qp_i 23 -qp_p 23'),  # AMD GPU
+            # Intel QuickSync
+            ('h264_qsv', '-c:v h264_qsv -preset veryfast -global_quality 23'),
+            # AMD GPU
+            ('h264_amf', '-c:v h264_amf -quality speed -rc cqp -qp_i 23 -qp_p 23'),
             ('libx264', '-c:v libx264 -preset ultrafast -crf 23')  # CPU fallback
         ]
 
@@ -42,7 +45,8 @@ def detectHardwareEncoder(fast_mode=False):
             # Test if encoder is available (Windows-compatible null redirect)
             null_redirect = "2>nul" if os.name == 'nt' else "2>/dev/null"
             test_cmd = f'"{FFMPEG_BINARY}" -f lavfi -i testsrc=duration=1:size=320x240:rate=1 -t 1 {encoder_args} -f null - {null_redirect}'
-            result = subprocess.run(test_cmd, shell=True, capture_output=True, timeout=10)
+            result = subprocess.run(
+                test_cmd, shell=True, capture_output=True, timeout=10)
             if result.returncode == 0:
                 print(f"Using hardware encoder: {encoder_name}")
                 return encoder_args
@@ -77,6 +81,7 @@ def copyFrame(inputFrame, outputFrame):
     if outputFrame % 20 == 19:
         print(str(outputFrame+1)+" time-altered frames saved.")
     return True
+
 
 def copyFramesBatch(frame_mappings):
     """Copy multiple frames in batch for better performance"""
@@ -155,12 +160,12 @@ parser.add_argument('--frame_rate', type=float, default=30,
                     help="frame rate of the input and output videos. optional... I try to find it out myself, but it doesn't always work.")
 parser.add_argument('--frame_quality', type=int, default=3,
                     help="quality of frames to be extracted from input video. 1 is highest, 31 is lowest, 3 is the default.")
-parser.add_argument('--fast_mode', action='store_true',
+parser.add_argument('--fast_mode', type=int, default=0,
                     help="enable fast processing mode (lower quality but much faster)")
 
 args = parser.parse_args()
 
-
+print("fast mode:", args.fast_mode)
 frameRate = args.frame_rate
 SAMPLE_RATE = args.sample_rate
 SILENT_THRESHOLD = args.silent_threshold
@@ -175,7 +180,8 @@ FRAME_QUALITY = args.frame_quality
 # Adjust quality for fast mode
 if args.fast_mode and FRAME_QUALITY < 8:
     FRAME_QUALITY = 8
-    print(f"Fast mode enabled: adjusting frame quality to {FRAME_QUALITY} for speed")
+    print(
+        f"Fast mode enabled: adjusting frame quality to {FRAME_QUALITY} for speed")
 
 assert INPUT_FILE != None, "why u put no input file, that dum"
 
@@ -270,7 +276,8 @@ processed_chunks = 0
 print(f"Processing {total_chunks} audio chunks...")
 
 for chunk_idx, chunk in enumerate(chunks):
-    audioChunk = audioData[int(chunk[0]*samplesPerFrame):int(chunk[1]*samplesPerFrame)]
+    audioChunk = audioData[int(chunk[0]*samplesPerFrame)
+                               :int(chunk[1]*samplesPerFrame)]
 
     sFile = TEMP_FOLDER+"/tempStart.wav"
     eFile = TEMP_FOLDER+"/tempEnd.wav"
@@ -331,7 +338,8 @@ for chunk_idx, chunk in enumerate(chunks):
     processed_chunks += 1
     if processed_chunks % 10 == 0 or processed_chunks == total_chunks:
         progress_percent = (processed_chunks / total_chunks) * 100
-        print(f"Processed {processed_chunks}/{total_chunks} chunks ({progress_percent:.1f}%)")
+        print(
+            f"Processed {processed_chunks}/{total_chunks} chunks ({progress_percent:.1f}%)")
 
 # Process any remaining frames in the batch
 if frame_mappings_batch:

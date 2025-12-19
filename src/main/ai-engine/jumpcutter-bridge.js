@@ -295,6 +295,7 @@ else:
    * @param {number} [options.sampleRate=44100] - Audio sample rate (22050, 44100, 48000)
    * @param {number} [options.frameRate=30] - Video frame rate (auto-detected if not specified)
    * @param {number} [options.frameQuality=3] - JPEG quality for frame extraction (1-31, lower=better)
+   * @param {boolean} [options.fastMode=false]
    *
    * @returns {Promise<Object>} Processing result
    * @returns {boolean} returns.success - Whether processing completed successfully
@@ -346,7 +347,8 @@ else:
       sampleRate = 44100,
       frameRate = 30,
       frameQuality = 3,
-      timeoutMinutes = 60, // Default 60 minute timeout for jumpcutter
+      timeoutMinutes = 120, // Default 60 minute timeout for jumpcutter
+      fastMode = false
     } = options;
 
     // Ensure output directory exists
@@ -387,6 +389,8 @@ else:
           frameRate.toString(),
           "--frame_quality",
           frameQuality.toString(),
+          "--fast_mode",
+          fastMode
         ];
       } else {
         // Use Python interpreter with script (try optimized version first)
@@ -418,12 +422,9 @@ else:
           frameRate.toString(),
           "--frame_quality",
           frameQuality.toString(),
+          "--fast_mode",
+          fastMode ? 1:0
         ];
-
-        // Add fast mode for quicker processing if silent speed is very high
-        if (silentSpeed > 100) {
-          args.push("--fast_mode");
-        }
       }
 
       console.log("Starting jumpcutter process:", { command, args });

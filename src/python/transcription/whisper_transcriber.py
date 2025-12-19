@@ -1,4 +1,4 @@
-import whisper
+from faster_whisper import WhisperModel
 import json
 import sys
 import argparse
@@ -19,11 +19,13 @@ except ImportError:
 class WhisperTranscriber:
     def __init__(self, model_size="base"):
         """
-        Initialize Whisper transcriber
+        Initialize Whisper transcriber using faster-whisper
         Args:
-            model_size (str): Size of Whisper model ('tiny', 'base', 'small', 'medium', 'large')
+            model_size (str): Size of Whisper model ('tiny', 'base', 'small', 'medium', 'large-v2')
         """
-        self.model = whisper.load_model(model_size)
+        # Use CPU by default for compatibility, can switch to CUDA if available
+        self.model = WhisperModel(
+            model_size, device="cpu", compute_type="int8")
 
     def transcribe(self, audio_path, language=None):
         """
@@ -35,37 +37,46 @@ class WhisperTranscriber:
             dict: Transcription results with timestamps
         """
         try:
-            result = self.model.transcribe(
+            # faster-whisper returns segments and info separately
+            segments, info = self.model.transcribe(
                 audio_path,
                 language=language,
                 word_timestamps=True,
-                verbose=False
+                vad_filter=True,  # Voice activity detection for better accuracy
             )
+
+            # Convert generator to list and format results
+            segments_list = list(segments)
+
+            # Build full text from segments
+            full_text = " ".join([seg.text.strip() for seg in segments_list])
 
             # Format results for easier processing
             formatted_result = {
-                'text': result['text'],
-                'language': result['language'],
+                'text': full_text,
+                'language': info.language,
                 'segments': []
             }
 
-            for segment in result['segments']:
+            # Process each segment from faster-whisper
+            for idx, segment in enumerate(segments_list):
                 formatted_segment = {
-                    'id': segment['id'],
-                    'start': segment['start'],
-                    'end': segment['end'],
-                    'text': segment['text'].strip(),
-                    'confidence': segment.get('avg_logprob', 0.0),
+                    'id': idx,
+                    'start': segment.start,
+                    'end': segment.end,
+                    'text': segment.text.strip(),
+                    'confidence': segment.avg_logprob,
                     'words': []
                 }
 
-                if 'words' in segment:
-                    for word in segment['words']:
+                # Add word-level timestamps if available
+                if hasattr(segment, 'words') and segment.words:
+                    for word in segment.words:
                         formatted_segment['words'].append({
-                            'word': word['word'],
-                            'start': word['start'],
-                            'end': word['end'],
-                            'probability': word.get('probability', 1.0)
+                            'word': word.word,
+                            'start': word.start,
+                            'end': word.end,
+                            'probability': word.probability
                         })
 
                 formatted_result['segments'].append(formatted_segment)
@@ -99,11 +110,10 @@ class WhisperTranscriber:
         srt_file = "subtitles.srt"
 
         with open(srt_file, "w", encoding='utf-8') as f:
-            # Fixed: use result['segments']
             for i, segment in enumerate(result['segments']):
-                start = segment['start']  # Fixed: use dict access
-                end = segment['end']      # Fixed: use dict access
-                text = segment['text']    # Fixed: use dict access
+                start = segment['start']
+                end = segment['end']
+                text = segment['text']
 
                 # Format time properly for SRT
                 start_time = self.format_srt_time(start)

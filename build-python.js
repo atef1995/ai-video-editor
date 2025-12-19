@@ -16,7 +16,7 @@ const scriptsToBundle = [
     requirements: path.join(pythonSrcDir, 'cut-quiet-parts', 'requirements.txt')
   },
   {
-    name: 'ai_pipeline', 
+    name: 'ai_pipeline',
     entry: path.join(pythonSrcDir, 'ai_pipeline.py'),
     requirements: path.join(__dirname, 'requirements.txt')
   }
@@ -24,7 +24,7 @@ const scriptsToBundle = [
 
 async function buildPythonExecutables() {
   console.log('🐍 Building Python executables...');
-  
+
   // Ensure build directory exists
   if (!fs.existsSync(buildDir)) {
     fs.mkdirSync(buildDir, { recursive: true });
@@ -32,15 +32,15 @@ async function buildPythonExecutables() {
 
   for (const script of scriptsToBundle) {
     console.log(`\n📦 Building ${script.name}...`);
-    
+
     try {
       // Install dependencies first
       console.log('📥 Installing dependencies...');
-      execSync(`pip install -r "${script.requirements}"`, { 
+      execSync(`pip install -r "${script.requirements}"`, {
         stdio: 'inherit',
         cwd: path.dirname(script.entry)
       });
-      
+
       // Install PyInstaller if not present
       try {
         execSync('python -c "import PyInstaller; print(PyInstaller.__version__)"', { stdio: 'pipe' });
@@ -66,8 +66,27 @@ async function buildPythonExecutables() {
         'audiotsm.io.wav',
         'audiotsm.phasevocoder',
         'audiotsm.wsola',
-        // Whisper and its dependencies (for ai_pipeline)
-        'whisper',
+        // MoviePy and video processing (for ai_pipeline)
+        'moviepy',
+        'moviepy.editor',
+        'moviepy.video',
+        'moviepy.video.io',
+        'moviepy.video.io.VideoFileClip',
+        'moviepy.audio',
+        'moviepy.audio.io',
+        'moviepy.audio.io.AudioFileClip',
+        'moviepy.video.fx',
+        'moviepy.audio.fx',
+        'imageio',
+        'imageio_ffmpeg',
+        'decorator',
+        'proglog',
+        // faster-whisper (lightweight, no PyTorch!)
+        'faster_whisper',
+        'ctranslate2',
+        'tokenizers',
+        'onnxruntime',
+        'av',
         'tiktoken_ext.openai_public',
         'tiktoken_ext',
         // NumPy submodules often missed by PyInstaller
@@ -88,41 +107,55 @@ async function buildPythonExecutables() {
         'pkg_resources.py2_warn'
       ];
 
-      // Collect all data files for whisper (models, tokenizer data)
+      // Collect all data files for faster-whisper (models, tokenizer data)
       const collectPackages = script.name === 'ai_pipeline'
-        ? ['whisper', 'tiktoken_ext']
+        ? ['faster_whisper', 'ctranslate2', 'tiktoken_ext', 'moviepy', 'imageio', 'imageio_ffmpeg']
         : [];
 
-      const pyinstallerCmd = [
-        `python "${path.join(__dirname, 'run_pyinstaller.py')}"`,
-        '--onefile',  // Create single executable
-        '--console',  // Keep console for debugging
-        '--name', script.name,
-        '--distpath', outputDir,
-        '--workpath', path.join(buildDir, 'temp', script.name),
-        '--specpath', path.join(buildDir, 'specs'),
-        '--clean',
-        ...hiddenImports.map(imp => `--hidden-import ${imp}`),
-        ...collectPackages.map(pkg => `--collect-all ${pkg}`),
-        ...excludes.map(exc => `--exclude-module ${exc}`),
-        `"${script.entry}"`
-      ].join(' ');
-      
-      console.log(`Running: ${pyinstallerCmd}`);
-      execSync(pyinstallerCmd, {
-        stdio: 'inherit',
-        cwd: path.dirname(script.entry),
-        timeout: 600000 // 10 minutes timeout
-      });
-      
+      // Use spec file if it exists, otherwise generate command
+      const specFile = path.join(buildDir, 'specs', `${script.name}.spec`);
+
+      if (fs.existsSync(specFile)) {
+        console.log(`Using spec file: ${specFile}`);
+        const pyinstallerCmd = `python -m PyInstaller "${specFile}" --clean --noconfirm`;
+        console.log(`Running: ${pyinstallerCmd}`);
+        execSync(pyinstallerCmd, {
+          stdio: 'inherit',
+          timeout: 600000 // 10 minutes timeout
+        });
+      } else {
+        console.log('Generating executable from command line...');
+        const pyinstallerCmd = [
+          `python -m PyInstaller`,
+          '--onefile',
+          '--console',
+          '--name', script.name,
+          '--distpath', outputDir,
+          '--workpath', path.join(buildDir, 'temp', script.name),
+          '--specpath', path.join(buildDir, 'specs'),
+          '--clean',
+          ...hiddenImports.map(imp => `--hidden-import ${imp}`),
+          ...collectPackages.map(pkg => `--collect-all ${pkg}`),
+          ...excludes.map(exc => `--exclude-module ${exc}`),
+          `"${script.entry}"`
+        ].join(' ');
+
+        console.log(`Running: ${pyinstallerCmd}`);
+        execSync(pyinstallerCmd, {
+          stdio: 'inherit',
+          cwd: path.dirname(script.entry),
+          timeout: 600000
+        });
+      }
+
       console.log(`✅ ${script.name} built successfully!`);
-      
+
     } catch (error) {
       console.error(`❌ Failed to build ${script.name}:`, error.message);
       process.exit(1);
     }
   }
-  
+
   console.log('\n🎉 All Python executables built successfully!');
   console.log(`📁 Executables are in: ${buildDir}`);
 }
@@ -130,9 +163,9 @@ async function buildPythonExecutables() {
 // Alternative approach: Bundle Python interpreter with libraries
 async function createPortablePython() {
   console.log('\n🐍 Creating portable Python distribution...');
-  
+
   const portablePythonDir = path.join(buildDir, 'python-portable');
-  
+
   // This would use python-build-standalone or embed Python
   // For now, we'll use the PyInstaller approach above
   console.log('💡 Using PyInstaller approach for better compatibility');

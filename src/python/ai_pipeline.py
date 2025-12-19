@@ -172,7 +172,8 @@ class AIPipeline:
             self.update_progress("Analyzing content with AI", 55)
 
             analysis_path = output_dir / f"{video_name}_analysis.json"
-            analysis_result = self.analyzer.analyze_content(transcript_result, self.clip_settings)
+            analysis_result = self.analyzer.analyze_content(
+                transcript_result, self.clip_settings)
 
             # Check for analysis errors
             if analysis_result.get('error'):
@@ -281,11 +282,13 @@ class AIPipeline:
                 # If clip is shorter than user's preferred minimum but longer than absolute minimum,
                 # extend it slightly or keep it as is if it's a natural segment boundary
                 if duration < min_duration:
-                    print(f"Clip {i+1} is {duration:.1f}s (shorter than preferred {min_duration}s) but keeping as natural segment")
+                    print(
+                        f"Clip {i+1} is {duration:.1f}s (shorter than preferred {min_duration}s) but keeping as natural segment")
 
                 if duration > max_duration:  # Too long, trim to max duration
                     end_time = start_time + max_duration
-                    print(f"Trimming clip {i+1} from {duration:.1f}s to {max_duration}s")
+                    print(
+                        f"Trimming clip {i+1} from {duration:.1f}s to {max_duration}s")
 
                 clip_filename = f"{video_name}_clip_{i+1}_{int(start_time)}.mp4"
                 clip_path = output_dir / clip_filename

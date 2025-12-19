@@ -91,7 +91,7 @@ class PythonBridge extends EventEmitter {
     return new Promise((resolve) => {
       const checkProcess = spawn(this.pythonPath, [
         "-c",
-        'import whisper, openai, moviepy; print("Dependencies OK")',
+        'import faster_whisper, openai, moviepy; print("Dependencies OK")',
       ]);
 
       let output = "";
@@ -421,12 +421,12 @@ class PythonBridge extends EventEmitter {
     const scriptPath = isDev
       ? path.join(__dirname, "../../python/editing/video_processor.py")
       : path.join(
-          process.resourcesPath,
-          "src",
-          "python",
-          "editing",
-          "video_processor.py",
-        );
+        process.resourcesPath,
+        "src",
+        "python",
+        "editing",
+        "video_processor.py",
+      );
 
     return new Promise((resolve, reject) => {
       const process = spawn(this.pythonPath, [
@@ -471,12 +471,12 @@ class PythonBridge extends EventEmitter {
     const scriptPath = isDev
       ? path.join(__dirname, "../../python/editing/video_processor.py")
       : path.join(
-          process.resourcesPath,
-          "src",
-          "python",
-          "editing",
-          "video_processor.py",
-        );
+        process.resourcesPath,
+        "src",
+        "python",
+        "editing",
+        "video_processor.py",
+      );
 
     return new Promise((resolve, reject) => {
       const args = [scriptPath, videoPath, "--command", "extract_audio"];
