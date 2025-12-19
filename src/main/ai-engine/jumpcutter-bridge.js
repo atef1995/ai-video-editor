@@ -390,7 +390,7 @@ else:
           "--frame_quality",
           frameQuality.toString(),
           "--fast_mode",
-          fastMode
+          fastMode ? 1 : 0
         ];
       } else {
         // Use Python interpreter with script (try optimized version first)
